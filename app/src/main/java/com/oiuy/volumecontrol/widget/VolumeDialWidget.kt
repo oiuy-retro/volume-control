@@ -9,130 +9,94 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.ImageProvider
-import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
-import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
-import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
-import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.oiuy.volumecontrol.MainActivity
 import com.oiuy.volumecontrol.R
-import com.oiuy.volumecontrol.volume.MediaVolumeController
+import com.oiuy.volumecontrol.effect.BackendKind
+import com.oiuy.volumecontrol.effect.GainMath
+import com.oiuy.volumecontrol.effect.GlobalEffectSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * Home-screen widget that mirrors the dial's look (percent + dial face).
- *
- * Android app widgets cannot receive continuous rotation gestures. Interaction
- * is limited to: tap dial to open the app; + / − buttons adjust media volume
- * by 10% of the stream max and refresh the widget.
+ * Experimental build widget: read-only status of the global output effect.
+ * It has no +/- controls and never changes Android media volume. Tap opens
+ * the app, where the effect can be enabled, adjusted, or released.
  */
 class VolumeDialWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val percent = MediaVolumeController(context).percent
+        val s = GlobalEffectSession.state
+        val main = if (s.active) GainMath.formatDb(s.requestedDb) else "Off"
+        val sub = when {
+            !s.active -> "experiment"
+            s.backend == BackendKind.DYNAMICS_PROCESSING -> "gain (exp.)"
+            else -> "EQ bands (exp.)"
+        }
         provideContent {
             GlanceTheme {
-                VolumeDialWidgetContent(percent = percent)
+                VolumeDialWidgetContent(main = main, sub = sub)
             }
         }
     }
 }
 
 @Composable
-private fun VolumeDialWidgetContent(percent: Int) {
+private fun VolumeDialWidgetContent(main: String, sub: String) {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(GlanceTheme.colors.widgetBackground)
-            .padding(8.dp),
+            .padding(8.dp)
+            .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = GlanceModifier
                 .size(96.dp)
-                .background(ImageProvider(R.drawable.widget_preview))
-                .clickable(actionStartActivity<MainActivity>()),
+                .background(ImageProvider(R.drawable.widget_preview)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = "$percent%",
-                style = TextStyle(
-                    color = ColorProvider(Color.White),
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = main,
+                    style = TextStyle(
+                        color = ColorProvider(Color.White),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+                Text(
+                    text = sub,
+                    style = TextStyle(color = ColorProvider(Color.White), fontSize = 11.sp),
+                )
+            }
         }
-        Spacer(GlanceModifier.height(8.dp))
-        Row(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "−",
-                style = TextStyle(
-                    color = GlanceTheme.colors.onSurface,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-                modifier = GlanceModifier
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .clickable(actionRunCallback<DecreaseVolumeAction>()),
-            )
-            Spacer(GlanceModifier.width(8.dp))
-            Text(
-                text = "+",
-                style = TextStyle(
-                    color = GlanceTheme.colors.onSurface,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-                modifier = GlanceModifier
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .clickable(actionRunCallback<IncreaseVolumeAction>()),
-            )
-        }
-    }
-}
-
-class IncreaseVolumeAction : ActionCallback {
-    override suspend fun onAction(
-        context: Context,
-        glanceId: GlanceId,
-        parameters: ActionParameters,
-    ) {
-        MediaVolumeController(context).adjustByPercentStep(VolumeActions.EXTRA_PERCENT_STEP)
-        VolumeDialWidget().update(context, glanceId)
-    }
-}
-
-class DecreaseVolumeAction : ActionCallback {
-    override suspend fun onAction(
-        context: Context,
-        glanceId: GlanceId,
-        parameters: ActionParameters,
-    ) {
-        MediaVolumeController(context).adjustByPercentStep(-VolumeActions.EXTRA_PERCENT_STEP)
-        VolumeDialWidget().update(context, glanceId)
+        Spacer(GlanceModifier.height(6.dp))
+        Text(
+            text = "Experimental: tap to open",
+            style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 12.sp),
+        )
     }
 }
 

@@ -2,6 +2,22 @@
 
 A Material 3 Expressive Android app with a large centered dial that changes media volume. One full 360° rotation changes `STREAM_MUSIC` by 10% of the stream maximum. Clockwise raises volume; counterclockwise lowers it. Fractional turns apply proportionally.
 
+## Experimental build: global output effect (0.1.3)
+
+This branch is a test of the old "global output mix" audio effect route. In this build the dial does not change Android media volume at all. It asks an audio effect attached to audio session 0 to attenuate (turn down) the signal by a number of decibels. The sections further down describe the regular volume dial on `main`, which this build does not use.
+
+- Session 0 effects are deprecated by Android ("attaching insert effects (equalizer, bass boost, virtualizer) to the global audio output mix by use of session 0 is deprecated", https://developer.android.com/reference/android/media/audiofx/AudioEffect). Whether a device still applies them, and to which apps and outputs, depends on the manufacturer's audio framework. Nothing in this app can verify that you actually hear a change.
+- Preferred backend (Android 9 and later): `DynamicsProcessing` on session 0 with every stage off except the per-channel input gain, which is a broadband gain in dB (https://developer.android.com/reference/android/media/audiofx/DynamicsProcessing). The value shown as "Effect API reports" is read back with `getInputGainByChannelIndex`, which queries the effect engine.
+- Fallback: `Equalizer` on session 0 with every band set to the same negative level, limited to the band range the device reports. This is equal band reduction, not a guaranteed flat gain; band filter shapes can leave some ripple. Read-back uses `getBandLevel`.
+- If neither can be attached, the app says so and stays off. It never falls back to changing media volume.
+- Range: 0 dB down to −30 dB (or the Equalizer's reported minimum if that is shallower). No boost. Values move in 0.1 dB steps; one full turn is 6 dB; a haptic click marks each whole dB. Hard stops at 0 dB and at the limit.
+- Starts neutral every time: effect off, 0 dB. Nothing is saved. "Enable experiment" attaches the effect at 0 dB, "Reset to 0 dB" returns to neutral, "Disable and release" sets 0 dB, disables, and releases the effect.
+- The effect is held by the app process, so you can switch to a music app and keep it. If Android stops the app in the background the effect is released; the app then shows it as off when you return.
+- Another app can take control of the same effect. The app shows "Control: lost to another app" when Android reports that.
+- Uses only the normal install-time permission `MODIFY_AUDIO_SETTINGS`. No recording, audio capture, adb, root, or hidden APIs.
+- The widget in this build is read-only: it shows the requested attenuation or "Off" and opens the app when tapped. It has no +/- controls and never changes media volume.
+- Known reports from other apps: Wavelet's "Legacy mode" uses the same session 0 route and "might work, depending on your device manufacturer's audio framework implementation" (https://pittvandewitt.github.io/Wavelet/Settings/). Some users report needing to turn off LE Audio on recent Samsung phones for Wavelet over Bluetooth; that is a report, not something this app checks.
+
 ## Dial behavior
 
 - Gesture tracking is relative to the dial center.
@@ -81,8 +97,8 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 ## Package
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
-- versionName: `0.1.1`
-- versionCode: `4`
+- versionName: `0.1.3` (experimental global output effect build)
+- versionCode: `13`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

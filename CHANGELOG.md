@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 (experimental, pre-release only)
+
+- Test build of the deprecated global output effect route (audio session 0). The dial sets a requested attenuation in dB instead of Android media volume.
+- Backend: `DynamicsProcessing` input gain (broadband) on Android 9+, falling back to `Equalizer` with equal band reduction (not guaranteed flat). Unsupported devices show a clear message and stay off.
+- Attenuation only, 0 dB to −30 dB (or the Equalizer minimum), 0.1 dB steps, 6 dB per full turn, a click per whole dB, no boost.
+- Shows the active backend, the requested value, and the value the effect API reports back, plus control status. Audible effect is not verified by the app.
+- Explicit Enable, Reset to 0 dB, and Disable and release. Starts neutral; nothing saved. Effect held at process scope so another player can be started.
+- Widget is read-only status in this build. No code path in the dial or widget changes media volume.
+- Adds the normal `MODIFY_AUDIO_SETTINGS` permission.
+- versionName 0.1.3, versionCode 13.
+
+## 0.1.1 (pre-releases only)
 
 - Stationary bezel ticks: 100 fine marks stay fixed on the dial rim; only the knob and indicator rotate with volume.
 - Twelve o'clock is the landmark for each 10% volume step (0, 10, 20, …, 100). Major marks every 36° (1% of max / whole display percent); the noon mark is emphasized.
