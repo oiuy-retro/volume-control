@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -40,7 +41,9 @@ import kotlin.math.sin
  * Large tactile dial. Stationary bezel ticks stay fixed; only the knob and
  * indicator rotate. Indicator angle follows fine volume so twelve o'clock is
  * every 10% landmark (0, 10, 20, …, 100). One full turn still changes volume
- * by ±10% of max. Rotation is hard-stopped at 0% and 100%.
+ * by ±10% of max. Rotation is hard-stopped at 0% and 100%. Near each whole
+ * percent (thicker bezel mark) the reported value snaps into a detent; major
+ * haptics fire on entering that zone, fine haptics on other tick crossings.
  */
 @Composable
 fun VolumeDial(
@@ -57,6 +60,7 @@ fun VolumeDial(
     var lastAngle by remember { mutableFloatStateOf(Float.NaN) }
     var dragPercent by remember { mutableFloatStateOf(percent) }
     var lastTick by remember { mutableIntStateOf(DialMath.tickIndexFromPercent(percent)) }
+    var wasAtMajor by remember { mutableStateOf(DialMath.isInWholePercentSnapZone(percent)) }
 
     val latestPercent = rememberUpdatedState(percent)
     val latestOnRotate = rememberUpdatedState(onRotateDegrees)
@@ -91,6 +95,7 @@ fun VolumeDial(
                         onDragStart = { offset ->
                             dragPercent = latestPercent.value
                             lastTick = DialMath.tickIndexFromPercent(dragPercent)
+                            wasAtMajor = DialMath.isInWholePercentSnapZone(dragPercent)
                             latestOnDragStart.value()
                             val center = Offset(size.width / 2f, size.height / 2f)
                             lastAngle = DialMath.angleDegrees(
@@ -118,16 +123,32 @@ fun VolumeDial(
                                 // Hard-stop: ignore rotation that would pass 0% or 100%.
                                 val applied = DialMath.clampRotationDegrees(rawDelta, dragPercent)
                                 if (applied != 0f) {
+                                    // Caller applies rotation and may snap to a whole percent.
                                     val newPercent = latestOnRotate.value(applied)
                                     dragPercent = newPercent
                                     val tick = DialMath.tickIndexFromPercent(newPercent)
                                     val crossed = DialMath.ticksCrossed(lastTick, tick)
-                                    if (crossed != 0) {
-                                        lastTick = tick
-                                        // At most one pulse / UI show per frame.
-                                        tickHaptics.onTickStep(view, crossed)
+                                    val nowAtMajor = DialMath.isInWholePercentSnapZone(newPercent)
+                                    val enteredMajor = nowAtMajor && !wasAtMajor
+                                    val includesMajor =
+                                        crossed != 0 && DialMath.crossedIncludesMajor(lastTick, tick)
+                                    // One haptic per frame: major if we entered a detent or
+                                    // crossed a major tick; otherwise fine on tick change.
+                                    if (enteredMajor || includesMajor) {
+                                        tickHaptics.onTickStep(
+                                            view,
+                                            ticksCrossed = if (crossed != 0) crossed else 1,
+                                            major = true,
+                                        )
+                                        latestOnTick.value()
+                                    } else if (crossed != 0) {
+                                        tickHaptics.onTickStep(view, crossed, major = false)
                                         latestOnTick.value()
                                     }
+                                    if (crossed != 0) {
+                                        lastTick = tick
+                                    }
+                                    wasAtMajor = nowAtMajor
                                 }
                                 // Blocked movement past a limit does not fire haptics.
                             }

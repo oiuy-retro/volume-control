@@ -27,6 +27,9 @@ object DialMath {
     /** Major stationary bezel marks every this many fine ticks (36° = 1% of max). */
     const val MAJOR_TICK_EVERY: Int = 10
 
+    /** Snap zone around each whole display percent, in percentage points (± one fine tick). */
+    const val WHOLE_PERCENT_SNAP_ZONE: Float = 0.1f
+
     /** Display percentage points per degree of dial rotation. */
     val displayPercentPerDegree: Float =
         DISPLAY_PERCENT_PER_FULL_TURN / FULL_TURN_DEGREES
@@ -45,6 +48,59 @@ object DialMath {
     fun tickIndexFromPercent(percent: Float): Int {
         val p = percent.coerceIn(0f, 100f)
         return kotlin.math.floor((p * 10f).toDouble() + 1e-4).toInt()
+    }
+
+    /** True when [tickIndex] lands on a whole-percent major (every [MAJOR_TICK_EVERY] fine ticks). */
+    fun isMajorTickIndex(tickIndex: Int): Boolean {
+        // Kotlin rem keeps the dividend sign; normalize so -10, 0, 10, … are majors.
+        val m = ((tickIndex % MAJOR_TICK_EVERY) + MAJOR_TICK_EVERY) % MAJOR_TICK_EVERY
+        return m == 0
+    }
+
+    /**
+     * Whether walking from [fromTick] to [toTick] (exclusive of from, inclusive of to)
+     * crosses or lands on any major tick index.
+     */
+    fun crossedIncludesMajor(fromTick: Int, toTick: Int): Boolean {
+        if (fromTick == toTick) return false
+        val step = if (toTick > fromTick) 1 else -1
+        var t = fromTick
+        while (t != toTick) {
+            t += step
+            if (isMajorTickIndex(t)) return true
+        }
+        return false
+    }
+
+    /** Nearest whole display percent in 0..100 (ties round away from zero / half-up). */
+    fun nearestWholePercent(percent: Float): Float {
+        val p = percent.coerceIn(0f, 100f)
+        // Avoid kotlin.math.round / rint banker's rounding so 46.5 → 47.
+        return kotlin.math.floor((p + 0.5f).toDouble()).toFloat().coerceIn(0f, 100f)
+    }
+
+    /**
+     * Snap [percent] to a whole display percent when within [zoneDisplayPercent]
+     * of that integer (default ±0.1 = one fine tick). Otherwise return [percent]
+     * unchanged (still clamped to 0..100).
+     */
+    fun snapToWholePercentIfNear(
+        percent: Float,
+        zoneDisplayPercent: Float = WHOLE_PERCENT_SNAP_ZONE,
+    ): Float {
+        val p = percent.coerceIn(0f, 100f)
+        val nearest = nearestWholePercent(p)
+        return if (kotlin.math.abs(p - nearest) <= zoneDisplayPercent) nearest else p
+    }
+
+    /** True when [percent] lies inside the whole-percent snap zone. */
+    fun isInWholePercentSnapZone(
+        percent: Float,
+        zoneDisplayPercent: Float = WHOLE_PERCENT_SNAP_ZONE,
+    ): Boolean {
+        val p = percent.coerceIn(0f, 100f)
+        val nearest = nearestWholePercent(p)
+        return kotlin.math.abs(p - nearest) <= zoneDisplayPercent
     }
 
     /**

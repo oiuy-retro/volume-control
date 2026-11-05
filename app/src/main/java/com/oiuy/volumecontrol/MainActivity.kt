@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.oiuy.volumecontrol.ui.VolumeControlTheme
 import com.oiuy.volumecontrol.ui.VolumeDial
+import com.oiuy.volumecontrol.volume.DialMath
 import com.oiuy.volumecontrol.volume.MediaVolumeController
 import com.oiuy.volumecontrol.widget.VolumeDialWidgetReceiver
 import java.util.concurrent.atomic.AtomicBoolean
@@ -74,7 +75,13 @@ class MainActivity : ComponentActivity() {
                         VolumeDial(
                             percent = percent,
                             onRotateDegrees = { degrees ->
-                                percent = controller.adjustByDegrees(degrees)
+                                val continuous = controller.adjustByDegrees(degrees)
+                                val snapped = DialMath.snapToWholePercentIfNear(continuous)
+                                percent = if (snapped != continuous) {
+                                    controller.setFractionalPercent(snapped)
+                                } else {
+                                    continuous
+                                }
                                 percent
                             },
                             onTickCrossed = {

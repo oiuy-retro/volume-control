@@ -156,4 +156,91 @@ class DialMathTest {
         // Within room, unchanged
         assertEquals(36f, DialMath.clampRotationDegrees(36f, 50f), 0.001f)
     }
+
+
+    @Test
+    fun nearestWholePercentRounds() {
+        assertEquals(47f, DialMath.nearestWholePercent(47.4f), 0.001f)
+        assertEquals(47f, DialMath.nearestWholePercent(46.5f), 0.001f)
+        assertEquals(0f, DialMath.nearestWholePercent(-1f), 0.001f)
+        assertEquals(100f, DialMath.nearestWholePercent(100.4f), 0.001f)
+    }
+
+    @Test
+    fun snapToWholePercentIfNear() {
+        // Within ±0.1 of 47 → snap
+        assertEquals(47f, DialMath.snapToWholePercentIfNear(47.0f), 0.001f)
+        assertEquals(47f, DialMath.snapToWholePercentIfNear(47.1f), 0.001f)
+        assertEquals(47f, DialMath.snapToWholePercentIfNear(46.9f), 0.001f)
+        // Outside zone → continuous
+        assertEquals(47.15f, DialMath.snapToWholePercentIfNear(47.15f), 0.001f)
+        assertEquals(46.85f, DialMath.snapToWholePercentIfNear(46.85f), 0.001f)
+        // Midpoint between wholes is far from both
+        assertEquals(46.5f, DialMath.snapToWholePercentIfNear(46.5f), 0.001f)
+        // Edges of range
+        assertEquals(0f, DialMath.snapToWholePercentIfNear(0.05f), 0.001f)
+        assertEquals(100f, DialMath.snapToWholePercentIfNear(99.95f), 0.001f)
+    }
+
+    @Test
+    fun isInWholePercentSnapZoneEnterLeave() {
+        assertTrue(DialMath.isInWholePercentSnapZone(47.0f))
+        assertTrue(DialMath.isInWholePercentSnapZone(47.1f))
+        assertTrue(DialMath.isInWholePercentSnapZone(46.9f))
+        assertTrue(!DialMath.isInWholePercentSnapZone(47.15f))
+        assertTrue(!DialMath.isInWholePercentSnapZone(46.85f))
+    }
+
+    @Test
+    fun isMajorTickIndexEveryTen() {
+        assertTrue(DialMath.isMajorTickIndex(0))
+        assertTrue(DialMath.isMajorTickIndex(10))
+        assertTrue(DialMath.isMajorTickIndex(470))
+        assertTrue(DialMath.isMajorTickIndex(1000))
+        assertTrue(!DialMath.isMajorTickIndex(1))
+        assertTrue(!DialMath.isMajorTickIndex(469))
+        assertTrue(DialMath.isMajorTickIndex(-10))
+        assertTrue(!DialMath.isMajorTickIndex(-1))
+    }
+
+    @Test
+    fun crossedIncludesMajorDetectsLandingAndCrossing() {
+        // Enter whole percent 47 (tick 470) from below
+        assertTrue(DialMath.crossedIncludesMajor(465, 470))
+        assertTrue(DialMath.crossedIncludesMajor(469, 470))
+        // Leaving a major does not count the starting tick (exclusive of from)
+        assertTrue(!DialMath.crossedIncludesMajor(470, 475))
+        // Fast spin across a major (enters 470 from below)
+        assertTrue(DialMath.crossedIncludesMajor(465, 475))
+        // No major between fine ticks in the same decade gap
+        assertTrue(!DialMath.crossedIncludesMajor(471, 475))
+        assertTrue(!DialMath.crossedIncludesMajor(465, 469))
+        assertTrue(!DialMath.crossedIncludesMajor(470, 470))
+        // Counterclockwise
+        assertTrue(DialMath.crossedIncludesMajor(475, 470))
+        assertTrue(DialMath.crossedIncludesMajor(471, 469))
+    }
+
+    @Test
+    fun clampStillWorksWithSnapNearby() {
+        // Near 100%: snap would want 100, but clamp still blocks clockwise room
+        assertEquals(0f, DialMath.clampRotationDegrees(90f, 100f), 0.001f)
+        assertEquals(0f, DialMath.clampRotationDegrees(-90f, 0f), 0.001f)
+        // From 99.95 (snaps to 100) full counterclockwise room remains
+        val snapped = DialMath.snapToWholePercentIfNear(99.95f)
+        assertEquals(100f, snapped, 0.001f)
+        assertEquals(-90f, DialMath.clampRotationDegrees(-90f, snapped), 0.001f)
+        // Partial room still applies near the top before snapping (0.5% upward → 18°)
+        assertEquals(18f, DialMath.clampRotationDegrees(90f, 99.5f), 0.001f)
+        // From 0.05 snapped to 0: clockwise allowed; clockwise still blocked at 0
+        val atZero = DialMath.snapToWholePercentIfNear(0.05f)
+        assertEquals(0f, atZero, 0.001f)
+        assertEquals(90f, DialMath.clampRotationDegrees(90f, atZero), 0.001f)
+        assertEquals(0f, DialMath.clampRotationDegrees(-1f, atZero), 0.001f)
+    }
+
+    @Test
+    fun wholePercentSnapZoneConstant() {
+        assertEquals(0.1f, DialMath.WHOLE_PERCENT_SNAP_ZONE, 0.0001f)
+    }
 }

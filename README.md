@@ -10,9 +10,9 @@ A Material 3 Expressive Android app with a large centered dial that changes medi
 - A stationary bezel draws 100 fine ticks (one every 3.6°). The ticks do not rotate with the knob. Every 10th tick (36°) is longer; twelve o'clock is emphasized as the landmark for each 10% volume step (0, 10, 20, …, 100).
 - Only the knob and indicator rotate. Indicator angle follows fine volume within the current 10% decade, so the indicator points at twelve o'clock at every 10% landmark.
 - Each fine tick is one position: 100 positions per turn, each worth 0.1% of the stream maximum. Volume is applied continuously underneath the ticks.
-- Tick crossings are counted from the fine percent (0.1% steps). A light haptic fires when a tick is crossed. At most one tick fires per input frame and ticks are rate-limited to one every 12 ms.
-- Haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) together with a short vibrator effect (`PRIMITIVE_LOW_TICK` where supported on API 31+, otherwise a 5 ms one-shot). The app requests the `VIBRATE` permission for this.
-- The center readout shows the fine fractional media volume to one decimal place (for example `47.3%`), updating on every tick.
+- Tick crossings are counted from the fine percent (0.1% steps). Within ±0.1 percentage points of a whole percent (thicker bezel mark), the dial snaps to that whole percent and STREAM_MUSIC follows it.
+- Fine tick haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) plus an 8 ms / amplitude 100 vibrator one-shot. Whole-percent detents use `LONG_PRESS` plus a 28 ms / amplitude 255 one-shot. At most one pulse per input frame; pulses are rate-limited to one every 12 ms; a major pulse resets that timer. Major haptic fires on entering a snap zone, not while holding inside it. The app requests the `VIBRATE` permission for this.
+- The center readout shows the fine fractional media volume to one decimal place (for example `47.3%`, or `47.0%` when snapped), updating on every tick.
 - Crossing a tick also brings up the Android system media-volume panel (`AudioManager.FLAG_SHOW_UI`), rate-limited to about once every 120 ms so rapid ticks do not flood the panel.
 
 ## Home-screen widget
