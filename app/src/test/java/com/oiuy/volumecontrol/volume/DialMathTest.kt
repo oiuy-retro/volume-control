@@ -51,4 +51,44 @@ class DialMathTest {
         assertEquals(0, DialMath.percentOf(0, 0))
         assertTrue(DialMath.percentOf(3, 7) in 42..43)
     }
+
+    @Test
+    fun tickConstants() {
+        assertEquals(100, DialMath.TICKS_PER_TURN)
+        assertEquals(3.6f, DialMath.DEGREES_PER_TICK, 0.0001f)
+    }
+
+    @Test
+    fun tickIndexClockwise() {
+        assertEquals(0, DialMath.tickIndex(0f))
+        assertEquals(0, DialMath.tickIndex(3.5f))
+        assertEquals(1, DialMath.tickIndex(3.7f))
+        assertEquals(100, DialMath.tickIndex(360.1f))
+        assertEquals(250, DialMath.tickIndex(900.5f))
+    }
+
+    @Test
+    fun tickIndexCounterclockwiseUsesFloor() {
+        assertEquals(-1, DialMath.tickIndex(-0.1f))
+        assertEquals(-1, DialMath.tickIndex(-3.5f))
+        assertEquals(-2, DialMath.tickIndex(-3.7f))
+        assertEquals(-101, DialMath.tickIndex(-360.1f))
+    }
+
+    @Test
+    fun accumulatedRotationAcrossWrapCountsTicks() {
+        // Finger moves 170 -> -170 (a 20 degree clockwise move across the atan2 seam).
+        var acc = 170f
+        val before = DialMath.tickIndex(acc)
+        acc += DialMath.shortestAngleDelta(170f, -170f)
+        val after = DialMath.tickIndex(acc)
+        assertEquals(5, DialMath.ticksCrossed(before, after))
+    }
+
+    @Test
+    fun hundredTicksEqualTenPercent() {
+        assertEquals(10f, DialMath.volumeDeltaFromTickSteps(100, 100), 0.001f)
+        assertEquals(0.1f, DialMath.volumeDeltaFromTickSteps(1, 100), 0.0001f)
+        assertEquals(-0.1f, DialMath.volumeDeltaFromTickSteps(-1, 100), 0.0001f)
+    }
 }

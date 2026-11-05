@@ -21,20 +21,27 @@ import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oiuy.volumecontrol.volume.DialMath
+import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.sin
 
 /**
  * Large tactile dial. Visual rotation tracks the finger 1:1.
  * Accumulated rotation maps to STREAM_MUSIC: 360° → ±10% of max.
+ *
+ * The dial face carries [DialMath.TICKS_PER_TURN] indents (one every
+ * [DialMath.DEGREES_PER_TICK] degrees). Each indent is one fine position
+ * (0.1% of max). A light haptic fires when the integer tick index derived
+ * from the unwrapped accumulated rotation changes.
  */
 @Composable
 fun VolumeDial(
@@ -42,10 +49,13 @@ fun VolumeDial(
     onRotateDegrees: (Float) -> Int,
     modifier: Modifier = Modifier,
 ) {
-    val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
+    val context = LocalContext.current
+    val tickHaptics = remember(context) { DialTickHaptics(context) }
+    // Accumulated, never-wrapped rotation in degrees; drives both drawing and tick indexing.
     var visualRotation by remember { mutableFloatStateOf(0f) }
     var lastAngle by remember { mutableFloatStateOf(Float.NaN) }
-    var lastStepBucket by remember { mutableIntStateOf(percent / 10) }
+    var lastTick by remember { mutableIntStateOf(0) }
 
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
     val dialColor = MaterialTheme.colorScheme.primary
@@ -84,11 +94,13 @@ fun VolumeDial(
                             if (!lastAngle.isNaN()) {
                                 val delta = DialMath.shortestAngleDelta(lastAngle, angle)
                                 visualRotation += delta
-                                val newPercent = onRotateDegrees(delta)
-                                val bucket = newPercent / 10
-                                if (bucket != lastStepBucket) {
-                                    lastStepBucket = bucket
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onRotateDegrees(delta)
+                                val tick = DialMath.tickIndex(visualRotation)
+                                val crossed = DialMath.ticksCrossed(lastTick, tick)
+                                if (crossed != 0) {
+                                    lastTick = tick
+                                    // At most one pulse per frame, however many ticks were crossed.
+                                    tickHaptics.onTickStep(view, crossed)
                                 }
                             }
                             lastAngle = angle
@@ -116,8 +128,29 @@ fun VolumeDial(
                     color = dialColor,
                     radius = radius * 0.72f,
                 )
+                // 100 indents around the dial rim; every 10th is longer.
+                val faceRadius = radius * 0.72f
+                val outer = faceRadius * 0.95f
+                val minorInner = faceRadius * 0.87f
+                val majorInner = faceRadius * 0.80f
+                val minorColor = indicatorColor.copy(alpha = 0.45f)
+                val majorColor = indicatorColor.copy(alpha = 0.85f)
+                for (i in 0 until DialMath.TICKS_PER_TURN) {
+                    val major = i % 10 == 0
+                    val rad = Math.toRadians((i * DialMath.DEGREES_PER_TICK - 90f).toDouble())
+                    val cx = cos(rad).toFloat()
+                    val cy = sin(rad).toFloat()
+                    val inner = if (major) majorInner else minorInner
+                    drawLine(
+                        color = if (major) majorColor else minorColor,
+                        start = Offset(size.center.x + cx * inner, size.center.y + cy * inner),
+                        end = Offset(size.center.x + cx * outer, size.center.y + cy * outer),
+                        strokeWidth = if (major) stroke * 0.28f else stroke * 0.16f,
+                        cap = StrokeCap.Round,
+                    )
+                }
                 // Indicator tick at top of dial face (12 o'clock relative to rotation)
-                val tickStart = Offset(size.center.x, size.center.y - radius * 0.68f)
+                val tickStart = Offset(size.center.x, size.center.y - radius * 0.56f)
                 val tickEnd = Offset(size.center.x, size.center.y - radius * 0.42f)
                 drawLine(
                     color = indicatorColor,

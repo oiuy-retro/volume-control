@@ -8,7 +8,11 @@ A Material 3 Expressive Android app with a large centered dial that changes medi
 - Visual dial rotation follows the finger 1:1.
 - Volume delta: `(degrees / 360) * 0.10 * maxVolume`.
 - Values are clamped to `0..maxVolume`.
-- Haptic feedback fires when the displayed percent crosses a 10% boundary.
+- The dial face has 100 indents, one every 3.6°, with every 10th indent drawn longer. The indents rotate with the dial.
+- Each indent is one fine position: 100 positions per turn, each worth 0.1% of the stream maximum. Volume itself is applied continuously underneath the indents.
+- Indent crossings are counted from the accumulated (unwrapped) rotation, so crossing the 0°/360° point never produces a false tick, and counterclockwise rotation is counted with floor semantics.
+- A light haptic tick fires when the dial passes an indent. At most one tick fires per input frame and ticks are rate-limited to one every 12 ms, so a fast spin stays crisp instead of turning into a buzz.
+- Haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) together with a short vibrator effect (`PRIMITIVE_LOW_TICK` where supported on API 31+, otherwise a 5 ms one-shot). The vibrator effect keeps ticks working on devices that ignore the constants. The app requests the `VIBRATE` permission for this.
 
 ## Home-screen widget
 
