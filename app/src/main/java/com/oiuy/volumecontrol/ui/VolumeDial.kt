@@ -48,10 +48,11 @@ import kotlin.math.sin
  *
  * Finger deltas always update a continuous **raw** percent first. A tiny
  * whole-percent magnet (±0.1%) may overlay the reported value while linear
- * finger speed (px/ms) is below [DialMath.MAGNET_MAX_FINGER_SPEED_PX_PER_MS];
- * the raw accumulator is never rebuilt from the snapped value. Whole-percent
- * marks also fire a strong major haptic on edge enter / cross; fine ticks stay
- * light.
+ * finger speed (px/ms) is below [DialMath.MAGNET_MAX_FINGER_SPEED_PX_PER_MS].
+ * After a snap engages, no magnet can re-engage until raw moves 0.5% (5 fine
+ * ticks) away from that whole — prevents edge jitter. The raw accumulator is
+ * never rebuilt from the snapped value. Whole-percent marks also fire a strong
+ * major haptic on edge enter / cross; fine ticks stay light.
  */
 @Composable
 fun VolumeDial(
@@ -81,6 +82,8 @@ fun VolumeDial(
     var wasAtMajor by remember {
         mutableStateOf(DialMath.isMajorTickIndex(DialMath.tickIndexFromPercent(percent)))
     }
+    var lastSnappedWhole by remember { mutableFloatStateOf(Float.NaN) }
+    var magnetHolding by remember { mutableStateOf(false) }
 
     val latestPercent = rememberUpdatedState(percent)
     val latestOnRotate = rememberUpdatedState(onRotateDegrees)
@@ -119,6 +122,8 @@ fun VolumeDial(
                             rawDragPercent = latestRawPercent.value()
                             lastTick = DialMath.tickIndexFromPercent(rawDragPercent)
                             wasAtMajor = DialMath.isMajorTickIndex(lastTick)
+                            lastSnappedWhole = Float.NaN
+                            magnetHolding = false
                             lastPointer = offset
                             lastPointerUptimeMs = SystemClock.uptimeMillis()
                             latestOnDragStart.value()
@@ -166,14 +171,15 @@ fun VolumeDial(
                                 if (applied != 0f) {
                                     val raw = latestOnRotate.value(applied)
                                     rawDragPercent = raw
-                                    val holdMagnet = DialMath.isMagnetFingerSpeed(speedPxPerMs) &&
-                                        DialMath.isInWholePercentMagnetZone(raw)
-                                    val reported = if (holdMagnet) {
-                                        DialMath.snapToWholePercentIfNear(raw)
-                                    } else {
-                                        raw
-                                    }
-                                    latestOnReported.value(reported)
+                                    val magnet = DialMath.resolveMagnetOverlay(
+                                        rawPercent = raw,
+                                        speedPxPerMs = speedPxPerMs,
+                                        lastSnappedWhole = lastSnappedWhole,
+                                        currentlyHolding = magnetHolding,
+                                    )
+                                    lastSnappedWhole = magnet.lastSnappedWhole
+                                    magnetHolding = magnet.holding
+                                    latestOnReported.value(magnet.reportedPercent)
 
                                     val tick = DialMath.tickIndexFromPercent(raw)
                                     val crossed = DialMath.ticksCrossed(lastTick, tick)

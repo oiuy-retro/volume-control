@@ -40,6 +40,13 @@ object DialMath {
      */
     const val MAGNET_MAX_FINGER_SPEED_PX_PER_MS: Float = 0.25f
 
+    /**
+     * After a magnet engages, raw percent must move this far (5 fine ticks =
+     * 0.5 display %) away from the snapped whole before any magnet can engage
+     * again. Prevents edge jitter in the ±1-tick zone.
+     */
+    const val MAGNET_RESNAP_CLEAR_DISTANCE: Float = 0.5f
+
     /** Display percentage points per degree of dial rotation. */
     val displayPercentPerDegree: Float =
         DISPLAY_PERCENT_PER_FULL_TURN / FULL_TURN_DEGREES
@@ -116,6 +123,74 @@ object DialMath {
     /** True when linear finger speed is slow enough for the magnet to hold. */
     fun isMagnetFingerSpeed(speedPxPerMs: Float): Boolean =
         speedPxPerMs <= MAGNET_MAX_FINGER_SPEED_PX_PER_MS
+
+    /**
+     * True when there is no active re-snap latch, or [rawPercent] has moved at
+     * least [MAGNET_RESNAP_CLEAR_DISTANCE] away from [lastSnappedWhole].
+     * Pass [Float.NaN] for [lastSnappedWhole] when no latch is set.
+     */
+    fun isMagnetLatchCleared(rawPercent: Float, lastSnappedWhole: Float): Boolean {
+        if (lastSnappedWhole.isNaN()) return true
+        val raw = rawPercent.coerceIn(0f, 100f)
+        return kotlin.math.abs(raw - lastSnappedWhole) >= MAGNET_RESNAP_CLEAR_DISTANCE - 1e-4f
+    }
+
+    /**
+     * Resolve the magnet output overlay for one drag frame.
+     *
+     * Finger deltas must already have updated [rawPercent]. Snap is only the
+     * returned [MagnetFrameResult.reportedPercent]; callers must not rebuild
+     * the raw accumulator from it.
+     *
+     * [lastSnappedWhole] / [currentlyHolding] carry latch state across frames
+     * ([Float.NaN] = no latch). After engage, a new engage is blocked until
+     * raw moves [MAGNET_RESNAP_CLEAR_DISTANCE] away from that whole.
+     */
+    fun resolveMagnetOverlay(
+        rawPercent: Float,
+        speedPxPerMs: Float,
+        lastSnappedWhole: Float,
+        currentlyHolding: Boolean,
+    ): MagnetFrameResult {
+        val raw = rawPercent.coerceIn(0f, 100f)
+        var latch = lastSnappedWhole
+        if (!latch.isNaN() && isMagnetLatchCleared(raw, latch)) {
+            latch = Float.NaN
+        }
+        val slow = isMagnetFingerSpeed(speedPxPerMs)
+        val inZone = isInWholePercentMagnetZone(raw)
+
+        if (currentlyHolding) {
+            if (slow && inZone) {
+                val snapped = if (!latch.isNaN()) latch else snapToWholePercentIfNear(raw)
+                return MagnetFrameResult(
+                    reportedPercent = snapped,
+                    lastSnappedWhole = snapped,
+                    holding = true,
+                )
+            }
+            return MagnetFrameResult(
+                reportedPercent = raw,
+                lastSnappedWhole = latch,
+                holding = false,
+            )
+        }
+
+        // Not holding: engage only when latch is clear and slow + in zone.
+        if (latch.isNaN() && slow && inZone) {
+            val snapped = snapToWholePercentIfNear(raw)
+            return MagnetFrameResult(
+                reportedPercent = snapped,
+                lastSnappedWhole = snapped,
+                holding = true,
+            )
+        }
+        return MagnetFrameResult(
+            reportedPercent = raw,
+            lastSnappedWhole = latch,
+            holding = false,
+        )
+    }
 
     /**
      * Indicator rotation in degrees for [percent].
@@ -205,3 +280,16 @@ object DialMath {
         return Math.toDegrees(radians).toFloat()
     }
 }
+
+/**
+ * Result of [DialMath.resolveMagnetOverlay] for one drag frame.
+ *
+ * @param reportedPercent value to show / send to STREAM_MUSIC (raw or snapped)
+ * @param lastSnappedWhole latch whole percent, or [Float.NaN] if cleared
+ * @param holding whether the magnet is actively holding this frame
+ */
+data class MagnetFrameResult(
+    val reportedPercent: Float,
+    val lastSnappedWhole: Float,
+    val holding: Boolean,
+)
