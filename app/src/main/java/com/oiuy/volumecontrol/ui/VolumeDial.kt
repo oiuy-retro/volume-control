@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,36 +37,43 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Large tactile dial. Visual rotation tracks the finger 1:1.
- * Accumulated rotation maps to STREAM_MUSIC: 360° → ±10% of max.
- *
- * The dial face carries [DialMath.TICKS_PER_TURN] indents (one every
- * [DialMath.DEGREES_PER_TICK] degrees). Each indent is one fine position
- * (0.1% of max). A light haptic fires when the integer tick index derived
- * from the unwrapped accumulated rotation changes, and the system volume
- * panel is shown on the same tick crossings.
+ * Large tactile dial. Stationary bezel ticks stay fixed; only the knob and
+ * indicator rotate. Indicator angle follows fine volume so twelve o'clock is
+ * every 10% landmark (0, 10, 20, …, 100). One full turn still changes volume
+ * by ±10% of max. Rotation is hard-stopped at 0% and 100%.
  */
 @Composable
 fun VolumeDial(
     percent: Float,
     onRotateDegrees: (Float) -> Float,
     onTickCrossed: () -> Unit = {},
+    onDragStart: () -> Unit = {},
+    onDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
     val context = LocalContext.current
     val tickHaptics = remember(context) { DialTickHaptics(context) }
-    // Accumulated, never-wrapped rotation in degrees; drives both drawing and tick indexing.
-    var visualRotation by remember { mutableFloatStateOf(0f) }
     var lastAngle by remember { mutableFloatStateOf(Float.NaN) }
-    var lastTick by remember { mutableIntStateOf(0) }
+    var dragPercent by remember { mutableFloatStateOf(percent) }
+    var lastTick by remember { mutableIntStateOf(DialMath.tickIndexFromPercent(percent)) }
+
+    val latestPercent = rememberUpdatedState(percent)
+    val latestOnRotate = rememberUpdatedState(onRotateDegrees)
+    val latestOnTick = rememberUpdatedState(onTickCrossed)
+    val latestOnDragStart = rememberUpdatedState(onDragStart)
+    val latestOnDragEnd = rememberUpdatedState(onDragEnd)
 
     val trackColor = MaterialTheme.colorScheme.surfaceVariant
     val dialColor = MaterialTheme.colorScheme.primary
     val indicatorColor = MaterialTheme.colorScheme.onPrimary
     val ringColor = MaterialTheme.colorScheme.secondary
+    val bezelMinor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.40f)
+    val bezelMajor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+    val bezelNoon = MaterialTheme.colorScheme.secondary
 
     val displayPercent = formatFinePercent(percent)
+    val indicatorDegrees = DialMath.indicatorDegreesFromPercent(percent)
 
     Box(
         modifier = modifier
@@ -81,14 +89,23 @@ fun VolumeDial(
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { offset ->
+                            dragPercent = latestPercent.value
+                            lastTick = DialMath.tickIndexFromPercent(dragPercent)
+                            latestOnDragStart.value()
                             val center = Offset(size.width / 2f, size.height / 2f)
                             lastAngle = DialMath.angleDegrees(
                                 offset.x - center.x,
                                 offset.y - center.y,
                             )
                         },
-                        onDragEnd = { lastAngle = Float.NaN },
-                        onDragCancel = { lastAngle = Float.NaN },
+                        onDragEnd = {
+                            lastAngle = Float.NaN
+                            latestOnDragEnd.value()
+                        },
+                        onDragCancel = {
+                            lastAngle = Float.NaN
+                            latestOnDragEnd.value()
+                        },
                         onDrag = { change, _ ->
                             change.consume()
                             val center = Offset(size.width / 2f, size.height / 2f)
@@ -97,17 +114,22 @@ fun VolumeDial(
                                 change.position.y - center.y,
                             )
                             if (!lastAngle.isNaN()) {
-                                val delta = DialMath.shortestAngleDelta(lastAngle, angle)
-                                visualRotation += delta
-                                onRotateDegrees(delta)
-                                val tick = DialMath.tickIndex(visualRotation)
-                                val crossed = DialMath.ticksCrossed(lastTick, tick)
-                                if (crossed != 0) {
-                                    lastTick = tick
-                                    // At most one pulse / UI show per frame, however many ticks crossed.
-                                    tickHaptics.onTickStep(view, crossed)
-                                    onTickCrossed()
+                                val rawDelta = DialMath.shortestAngleDelta(lastAngle, angle)
+                                // Hard-stop: ignore rotation that would pass 0% or 100%.
+                                val applied = DialMath.clampRotationDegrees(rawDelta, dragPercent)
+                                if (applied != 0f) {
+                                    val newPercent = latestOnRotate.value(applied)
+                                    dragPercent = newPercent
+                                    val tick = DialMath.tickIndexFromPercent(newPercent)
+                                    val crossed = DialMath.ticksCrossed(lastTick, tick)
+                                    if (crossed != 0) {
+                                        lastTick = tick
+                                        // At most one pulse / UI show per frame.
+                                        tickHaptics.onTickStep(view, crossed)
+                                        latestOnTick.value()
+                                    }
                                 }
+                                // Blocked movement past a limit does not fire haptics.
                             }
                             lastAngle = angle
                         },
@@ -117,7 +139,7 @@ fun VolumeDial(
             val radius = min(size.width, size.height) / 2f
             val stroke = radius * 0.08f
 
-            // Outer ring
+            // Outer ring / track
             drawCircle(
                 color = trackColor,
                 radius = radius * 0.98f,
@@ -128,34 +150,47 @@ fun VolumeDial(
                 style = Stroke(width = stroke * 0.5f),
             )
 
-            // Rotating dial body
-            rotate(degrees = visualRotation, pivot = size.center) {
+            // Stationary bezel ticks (do not rotate with the indicator).
+            val bezelOuter = radius * 0.96f
+            val minorInner = radius * 0.88f
+            val majorInner = radius * 0.84f
+            val noonInner = radius * 0.80f
+            for (i in 0 until DialMath.TICKS_PER_TURN) {
+                val major = i % DialMath.MAJOR_TICK_EVERY == 0
+                val noon = i == 0
+                val rad = Math.toRadians((i * DialMath.DEGREES_PER_TICK - 90f).toDouble())
+                val cx = cos(rad).toFloat()
+                val cy = sin(rad).toFloat()
+                val inner = when {
+                    noon -> noonInner
+                    major -> majorInner
+                    else -> minorInner
+                }
+                val color = when {
+                    noon -> bezelNoon
+                    major -> bezelMajor
+                    else -> bezelMinor
+                }
+                val width = when {
+                    noon -> stroke * 0.42f
+                    major -> stroke * 0.28f
+                    else -> stroke * 0.14f
+                }
+                drawLine(
+                    color = color,
+                    start = Offset(size.center.x + cx * inner, size.center.y + cy * inner),
+                    end = Offset(size.center.x + cx * bezelOuter, size.center.y + cy * bezelOuter),
+                    strokeWidth = width,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            // Rotating knob + indicator only
+            rotate(degrees = indicatorDegrees, pivot = size.center) {
                 drawCircle(
                     color = dialColor,
                     radius = radius * 0.72f,
                 )
-                // 100 indents around the dial rim; every 10th is longer.
-                val faceRadius = radius * 0.72f
-                val outer = faceRadius * 0.95f
-                val minorInner = faceRadius * 0.87f
-                val majorInner = faceRadius * 0.80f
-                val minorColor = indicatorColor.copy(alpha = 0.45f)
-                val majorColor = indicatorColor.copy(alpha = 0.85f)
-                for (i in 0 until DialMath.TICKS_PER_TURN) {
-                    val major = i % 10 == 0
-                    val rad = Math.toRadians((i * DialMath.DEGREES_PER_TICK - 90f).toDouble())
-                    val cx = cos(rad).toFloat()
-                    val cy = sin(rad).toFloat()
-                    val inner = if (major) majorInner else minorInner
-                    drawLine(
-                        color = if (major) majorColor else minorColor,
-                        start = Offset(size.center.x + cx * inner, size.center.y + cy * inner),
-                        end = Offset(size.center.x + cx * outer, size.center.y + cy * outer),
-                        strokeWidth = if (major) stroke * 0.28f else stroke * 0.16f,
-                        cap = StrokeCap.Round,
-                    )
-                }
-                // Indicator tick at top of dial face (12 o'clock relative to rotation)
                 val tickStart = Offset(size.center.x, size.center.y - radius * 0.56f)
                 val tickEnd = Offset(size.center.x, size.center.y - radius * 0.42f)
                 drawLine(
@@ -165,7 +200,6 @@ fun VolumeDial(
                     strokeWidth = stroke,
                     cap = StrokeCap.Round,
                 )
-                // Inner hub
                 drawCircle(
                     color = indicatorColor.copy(alpha = 0.2f),
                     radius = radius * 0.18f,

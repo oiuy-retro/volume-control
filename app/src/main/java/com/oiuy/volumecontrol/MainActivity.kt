@@ -26,6 +26,7 @@ import com.oiuy.volumecontrol.ui.VolumeControlTheme
 import com.oiuy.volumecontrol.ui.VolumeDial
 import com.oiuy.volumecontrol.volume.MediaVolumeController
 import com.oiuy.volumecontrol.widget.VolumeDialWidgetReceiver
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,10 +41,15 @@ class MainActivity : ComponentActivity() {
                     val context = LocalContext.current
                     val controller = remember { MediaVolumeController(context) }
                     var percent by remember { mutableFloatStateOf(controller.fractionalPercent()) }
+                    val dragging = remember { AtomicBoolean(false) }
 
                     DisposableEffect(Unit) {
                         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
                             override fun onChange(selfChange: Boolean, uri: Uri?) {
+                                // Do not syncFromSystem while the user is dragging the dial.
+                                // Our own setStreamVolume would otherwise reset the fine
+                                // fractional level and freeze / jump the dial.
+                                if (dragging.get()) return
                                 controller.syncFromSystem()
                                 percent = controller.fractionalPercent()
                                 VolumeDialWidgetReceiver.requestUpdate(context)
@@ -69,11 +75,16 @@ class MainActivity : ComponentActivity() {
                             percent = percent,
                             onRotateDegrees = { degrees ->
                                 percent = controller.adjustByDegrees(degrees)
-                                VolumeDialWidgetReceiver.requestUpdate(context)
                                 percent
                             },
                             onTickCrossed = {
                                 controller.showSystemVolumeUi()
+                            },
+                            onDragStart = { dragging.set(true) },
+                            onDragEnd = {
+                                dragging.set(false)
+                                // Widget refresh once per gesture, not every drag pixel.
+                                VolumeDialWidgetReceiver.requestUpdate(context)
                             },
                         )
                     }

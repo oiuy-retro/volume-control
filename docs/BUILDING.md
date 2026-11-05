@@ -53,7 +53,7 @@ Release APK:
 ```bash
 git clone https://github.com/oiuy-retro/volume-control.git
 cd volume-control
-git checkout feature/initial-app   # or main after merge
+git checkout main
 echo "sdk.dir=/absolute/path/to/Android/Sdk" > local.properties
 export JAVA_HOME=/absolute/path/to/jdk-21
 export PATH="$JAVA_HOME/bin:$PATH"

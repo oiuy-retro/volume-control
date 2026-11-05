@@ -65,6 +65,8 @@ class DialMathTest {
     fun tickConstants() {
         assertEquals(100, DialMath.TICKS_PER_TURN)
         assertEquals(3.6f, DialMath.DEGREES_PER_TICK, 0.0001f)
+        assertEquals(10, DialMath.MAJOR_TICK_EVERY)
+        assertEquals(10f, DialMath.DISPLAY_PERCENT_PER_FULL_TURN, 0.0001f)
     }
 
     @Test
@@ -99,5 +101,59 @@ class DialMathTest {
         assertEquals(10f, DialMath.volumeDeltaFromTickSteps(100, 100), 0.001f)
         assertEquals(0.1f, DialMath.volumeDeltaFromTickSteps(1, 100), 0.0001f)
         assertEquals(-0.1f, DialMath.volumeDeltaFromTickSteps(-1, 100), 0.0001f)
+    }
+
+    @Test
+    fun tickIndexFromPercent() {
+        assertEquals(0, DialMath.tickIndexFromPercent(0f))
+        assertEquals(473, DialMath.tickIndexFromPercent(47.3f))
+        assertEquals(1000, DialMath.tickIndexFromPercent(100f))
+        assertEquals(100, DialMath.tickIndexFromPercent(10f))
+        assertEquals(99, DialMath.tickIndexFromPercent(9.9f))
+    }
+
+    @Test
+    fun indicatorDegreesAtTenPercentLandmarks() {
+        assertEquals(0f, DialMath.indicatorDegreesFromPercent(0f), 0.001f)
+        assertEquals(0f, DialMath.indicatorDegreesFromPercent(10f), 0.001f)
+        assertEquals(0f, DialMath.indicatorDegreesFromPercent(20f), 0.001f)
+        assertEquals(0f, DialMath.indicatorDegreesFromPercent(50f), 0.001f)
+        assertEquals(0f, DialMath.indicatorDegreesFromPercent(100f), 0.001f)
+    }
+
+    @Test
+    fun indicatorDegreesWithinDecade() {
+        // 5% is halfway through a decade → 180°
+        assertEquals(180f, DialMath.indicatorDegreesFromPercent(5f), 0.001f)
+        assertEquals(180f, DialMath.indicatorDegreesFromPercent(15f), 0.001f)
+        // one fine tick (0.1%) past a landmark → 3.6°
+        assertEquals(3.6f, DialMath.indicatorDegreesFromPercent(10.1f), 0.001f)
+        assertEquals(356.4f, DialMath.indicatorDegreesFromPercent(9.9f), 0.05f)
+    }
+
+    @Test
+    fun clampRotationAtZeroBlocksCounterclockwise() {
+        assertEquals(0f, DialMath.clampRotationDegrees(-90f, 0f), 0.001f)
+        assertEquals(0f, DialMath.clampRotationDegrees(-1f, 0f), 0.001f)
+        // Clockwise from 0 is allowed
+        assertEquals(90f, DialMath.clampRotationDegrees(90f, 0f), 0.001f)
+    }
+
+    @Test
+    fun clampRotationAtHundredBlocksClockwise() {
+        assertEquals(0f, DialMath.clampRotationDegrees(90f, 100f), 0.001f)
+        assertEquals(0f, DialMath.clampRotationDegrees(1f, 100f), 0.001f)
+        // Counterclockwise from 100 is allowed
+        assertEquals(-90f, DialMath.clampRotationDegrees(-90f, 100f), 0.001f)
+    }
+
+    @Test
+    fun clampRotationPartialNearLimit() {
+        // 0.5% room upward → max 18° (since 360° = 10%)
+        assertEquals(18f, DialMath.clampRotationDegrees(90f, 99.5f), 0.001f)
+        // 0.5% room downward → max -18°
+        assertEquals(-18f, DialMath.clampRotationDegrees(-90f, 0.5f), 0.001f)
+        // Within room, unchanged
+        assertEquals(36f, DialMath.clampRotationDegrees(36f, 50f), 0.001f)
     }
 }

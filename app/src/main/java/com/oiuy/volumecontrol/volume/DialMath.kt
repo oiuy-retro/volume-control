@@ -6,10 +6,17 @@ package com.oiuy.volumecontrol.volume
  * Contract: one full 360° turn changes volume by 10% of [maxVolume].
  * Fractional turns apply proportionally. Clockwise (positive degrees) raises
  * volume; counterclockwise lowers it.
+ *
+ * Stationary bezel ticks: 100 positions per turn (3.6°). Twelve o'clock is the
+ * landmark for each 10% volume step (0, 10, 20, …, 100). The rotating indicator
+ * angle is derived from position within the current 10% decade.
  */
 object DialMath {
     const val PERCENT_PER_FULL_TURN: Float = 0.10f
     const val FULL_TURN_DEGREES: Float = 360f
+
+    /** Display percentage points changed by one full turn (10.0 on the 0..100 readout). */
+    const val DISPLAY_PERCENT_PER_FULL_TURN: Float = PERCENT_PER_FULL_TURN * 100f
 
     /** Number of detent positions (indents) in one full turn. */
     const val TICKS_PER_TURN: Int = 100
@@ -17,12 +24,57 @@ object DialMath {
     /** Angular spacing between adjacent ticks: 360 / 100 = 3.6 degrees. */
     const val DEGREES_PER_TICK: Float = FULL_TURN_DEGREES / TICKS_PER_TURN
 
+    /** Major stationary bezel marks every this many fine ticks (36° = 1% of max). */
+    const val MAJOR_TICK_EVERY: Int = 10
+
+    /** Display percentage points per degree of dial rotation. */
+    val displayPercentPerDegree: Float =
+        DISPLAY_PERCENT_PER_FULL_TURN / FULL_TURN_DEGREES
+
     /**
      * Tick index for an accumulated, unwrapped rotation (never wrapped to ±180).
      * Uses floor semantics so counterclockwise rotation yields -1 for (-3.6, 0).
      */
     fun tickIndex(accumulatedDegrees: Float): Int =
         kotlin.math.floor(accumulatedDegrees.toDouble() / DEGREES_PER_TICK.toDouble()).toInt()
+
+    /**
+     * Fine tick index from a 0..100 display percent.
+     * Each tick is 0.1 percentage points (100 ticks × 0.1% = 10% per turn).
+     */
+    fun tickIndexFromPercent(percent: Float): Int {
+        val p = percent.coerceIn(0f, 100f)
+        return kotlin.math.floor((p * 10f).toDouble() + 1e-4).toInt()
+    }
+
+    /**
+     * Indicator rotation in degrees for [percent].
+     * Twelve o'clock (0°) at every 10% landmark: 0, 10, 20, …, 100.
+     * Within a decade, angle advances clockwise with the fine percent.
+     */
+    fun indicatorDegreesFromPercent(percent: Float): Float {
+        val p = percent.coerceIn(0f, 100f)
+        if (p >= 100f) return 0f
+        val withinDecade = p % DISPLAY_PERCENT_PER_FULL_TURN
+        return (withinDecade / DISPLAY_PERCENT_PER_FULL_TURN) * FULL_TURN_DEGREES
+    }
+
+    /**
+     * Portion of [deltaDegrees] that can be applied without driving [currentPercent]
+     * past 0% or 100%. Returns 0 when already at the hard stop in that direction.
+     */
+    fun clampRotationDegrees(deltaDegrees: Float, currentPercent: Float): Float {
+        if (deltaDegrees == 0f) return 0f
+        val percent = currentPercent.coerceIn(0f, 100f)
+        val perDegree = displayPercentPerDegree
+        return if (deltaDegrees > 0f) {
+            val room = (100f - percent).coerceAtLeast(0f)
+            if (room <= 0f) 0f else deltaDegrees.coerceAtMost(room / perDegree)
+        } else {
+            val room = percent.coerceAtLeast(0f)
+            if (room <= 0f) 0f else deltaDegrees.coerceAtLeast(-room / perDegree)
+        }
+    }
 
     /** Signed number of tick boundaries crossed between two tick indices. */
     fun ticksCrossed(fromTick: Int, toTick: Int): Int = toTick - fromTick
