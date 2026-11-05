@@ -13,6 +13,8 @@ A Material 3 Expressive Android app with a large centered dial that changes medi
 - Indent crossings are counted from the accumulated (unwrapped) rotation, so crossing the 0°/360° point never produces a false tick, and counterclockwise rotation is counted with floor semantics.
 - A light haptic tick fires when the dial passes an indent. At most one tick fires per input frame and ticks are rate-limited to one every 12 ms, so a fast spin stays crisp instead of turning into a buzz.
 - Haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) together with a short vibrator effect (`PRIMITIVE_LOW_TICK` where supported on API 31+, otherwise a 5 ms one-shot). The vibrator effect keeps ticks working on devices that ignore the constants. The app requests the `VIBRATE` permission for this.
+- The center readout shows the fine fractional media volume to one decimal place (for example `47.3%`), updating on every tick rather than only when the coarse integer stream index changes.
+- Crossing a tick also brings up the Android system media-volume panel on the side (`AudioManager.FLAG_SHOW_UI`), the same panel that appears when you press a hardware volume key. At most one panel refresh is requested per input frame when several ticks are crossed at once.
 
 ## Home-screen widget
 
@@ -81,7 +83,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
 - versionName: `0.1.0`
-- versionCode: `1`
+- versionCode: `3`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

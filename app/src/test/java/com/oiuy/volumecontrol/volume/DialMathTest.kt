@@ -53,6 +53,15 @@ class DialMathTest {
     }
 
     @Test
+    fun fractionalPercentOf() {
+        assertEquals(50.0f, DialMath.fractionalPercentOf(25f, 50), 0.001f)
+        assertEquals(0.0f, DialMath.fractionalPercentOf(0f, 0), 0.001f)
+        assertEquals(47.3f, DialMath.fractionalPercentOf(7.095f, 15), 0.05f)
+        assertEquals(100.0f, DialMath.fractionalPercentOf(20f, 15), 0.001f)
+        assertEquals(0.0f, DialMath.fractionalPercentOf(-1f, 15), 0.001f)
+    }
+
+    @Test
     fun tickConstants() {
         assertEquals(100, DialMath.TICKS_PER_TURN)
         assertEquals(3.6f, DialMath.DEGREES_PER_TICK, 0.0001f)

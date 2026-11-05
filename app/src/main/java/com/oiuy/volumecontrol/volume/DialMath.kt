@@ -64,6 +64,12 @@ object DialMath {
             .coerceIn(0, 100)
     }
 
+    /** Fine percent 0..100 from a fractional stream level. */
+    fun fractionalPercentOf(level: Float, maxVolume: Int): Float {
+        if (maxVolume <= 0) return 0f
+        return ((level / maxVolume.toFloat()) * 100f).coerceIn(0f, 100f)
+    }
+
     /** Shortest signed angle delta from [fromDegrees] to [toDegrees] in (-180, 180]. */
     fun shortestAngleDelta(fromDegrees: Float, toDegrees: Float): Float {
         var delta = toDegrees - fromDegrees

@@ -16,7 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,12 +39,13 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val context = LocalContext.current
                     val controller = remember { MediaVolumeController(context) }
-                    var percent by remember { mutableIntStateOf(controller.percent) }
+                    var percent by remember { mutableFloatStateOf(controller.fractionalPercent()) }
 
                     DisposableEffect(Unit) {
                         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
                             override fun onChange(selfChange: Boolean, uri: Uri?) {
-                                percent = controller.percent
+                                controller.syncFromSystem()
+                                percent = controller.fractionalPercent()
                                 VolumeDialWidgetReceiver.requestUpdate(context)
                             }
                         }
@@ -67,10 +68,12 @@ class MainActivity : ComponentActivity() {
                         VolumeDial(
                             percent = percent,
                             onRotateDegrees = { degrees ->
-                                controller.adjustByDegrees(degrees)
-                                percent = controller.percent
+                                percent = controller.adjustByDegrees(degrees)
                                 VolumeDialWidgetReceiver.requestUpdate(context)
                                 percent
+                            },
+                            onTickCrossed = {
+                                controller.showSystemVolumeUi()
                             },
                         )
                     }

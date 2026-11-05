@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.oiuy.volumecontrol.volume.DialMath
 import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -41,12 +42,14 @@ import kotlin.math.sin
  * The dial face carries [DialMath.TICKS_PER_TURN] indents (one every
  * [DialMath.DEGREES_PER_TICK] degrees). Each indent is one fine position
  * (0.1% of max). A light haptic fires when the integer tick index derived
- * from the unwrapped accumulated rotation changes.
+ * from the unwrapped accumulated rotation changes, and the system volume
+ * panel is shown on the same tick crossings.
  */
 @Composable
 fun VolumeDial(
-    percent: Int,
-    onRotateDegrees: (Float) -> Int,
+    percent: Float,
+    onRotateDegrees: (Float) -> Float,
+    onTickCrossed: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
@@ -62,12 +65,14 @@ fun VolumeDial(
     val indicatorColor = MaterialTheme.colorScheme.onPrimary
     val ringColor = MaterialTheme.colorScheme.secondary
 
+    val displayPercent = formatFinePercent(percent)
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .padding(24.dp)
-            .semantics { contentDescription = "Volume dial, $percent percent" },
+            .semantics { contentDescription = "Volume dial, $displayPercent percent" },
         contentAlignment = Alignment.Center,
     ) {
         Canvas(
@@ -99,8 +104,9 @@ fun VolumeDial(
                                 val crossed = DialMath.ticksCrossed(lastTick, tick)
                                 if (crossed != 0) {
                                     lastTick = tick
-                                    // At most one pulse per frame, however many ticks were crossed.
+                                    // At most one pulse / UI show per frame, however many ticks crossed.
                                     tickHaptics.onTickStep(view, crossed)
+                                    onTickCrossed()
                                 }
                             }
                             lastAngle = angle
@@ -166,8 +172,8 @@ fun VolumeDial(
                 )
             }
 
-            // Progress arc for current percent (static reference)
-            val sweep = (percent.coerceIn(0, 100) / 100f) * 360f
+            // Progress arc for current fine percent (static reference)
+            val sweep = (percent.coerceIn(0f, 100f) / 100f) * 360f
             drawArc(
                 color = ringColor,
                 startAngle = -90f,
@@ -180,7 +186,7 @@ fun VolumeDial(
         }
 
         Text(
-            text = "$percent%",
+            text = "$displayPercent%",
             style = MaterialTheme.typography.displayLarge.copy(
                 fontWeight = FontWeight.Bold,
                 fontSize = 56.sp,
@@ -188,4 +194,13 @@ fun VolumeDial(
             color = MaterialTheme.colorScheme.onSurface,
         )
     }
+}
+
+/** One decimal place so each 0.1% tick is visible in the center readout. */
+internal fun formatFinePercent(percent: Float): String {
+    val clamped = percent.coerceIn(0f, 100f)
+    val tenths = (clamped * 10f).roundToInt()
+    val whole = tenths / 10
+    val frac = tenths % 10
+    return "$whole.$frac"
 }
