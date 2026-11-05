@@ -1,5 +1,7 @@
 package com.oiuy.volumecontrol.ui
 
+import android.os.SystemClock
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -32,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oiuy.volumecontrol.volume.DialMath
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -41,14 +44,21 @@ import kotlin.math.sin
  * Large tactile dial. Stationary bezel ticks stay fixed; only the knob and
  * indicator rotate. Indicator angle follows fine volume so twelve o'clock is
  * every 10% landmark (0, 10, 20, …, 100). One full turn still changes volume
- * by ±10% of max. Rotation is hard-stopped at 0% and 100%. Near each whole
- * percent (thicker bezel mark) the reported value snaps into a detent; major
- * haptics fire on entering that zone, fine haptics on other tick crossings.
+ * by ±10% of max. Rotation is hard-stopped at 0% and 100%.
+ *
+ * Near each whole percent (thicker bezel mark), when drag speed is below
+ * [DialMath.SNAP_MAX_SPEED_DEG_PER_MS], the value may snap into a ±0.2%
+ * detent. Fast spins stay continuous. Major haptics fire on entering a snap
+ * or crossing a major tick; fine haptics on other tick crossings.
  */
 @Composable
 fun VolumeDial(
     percent: Float,
-    onRotateDegrees: (Float) -> Float,
+    /**
+     * Apply [degrees] of rotation. Second arg is true when the gesture is slow
+     * enough that the caller may snap to a whole percent.
+     */
+    onRotateDegrees: (degrees: Float, allowSnap: Boolean) -> Float,
     onTickCrossed: () -> Unit = {},
     onDragStart: () -> Unit = {},
     onDragEnd: () -> Unit = {},
@@ -60,7 +70,8 @@ fun VolumeDial(
     var lastAngle by remember { mutableFloatStateOf(Float.NaN) }
     var dragPercent by remember { mutableFloatStateOf(percent) }
     var lastTick by remember { mutableIntStateOf(DialMath.tickIndexFromPercent(percent)) }
-    var wasAtMajor by remember { mutableStateOf(DialMath.isInWholePercentSnapZone(percent)) }
+    var wasAtMajor by remember { mutableStateOf(false) }
+    var lastDragUptimeMs by remember { mutableStateOf(0L) }
 
     val latestPercent = rememberUpdatedState(percent)
     val latestOnRotate = rememberUpdatedState(onRotateDegrees)
@@ -95,7 +106,10 @@ fun VolumeDial(
                         onDragStart = { offset ->
                             dragPercent = latestPercent.value
                             lastTick = DialMath.tickIndexFromPercent(dragPercent)
-                            wasAtMajor = DialMath.isInWholePercentSnapZone(dragPercent)
+                            // Treat an already-snapped whole percent as "at major".
+                            wasAtMajor = DialMath.snapToWholePercentIfNear(dragPercent) ==
+                                dragPercent && DialMath.isInWholePercentSnapZone(dragPercent)
+                            lastDragUptimeMs = SystemClock.uptimeMillis()
                             latestOnDragStart.value()
                             val center = Offset(size.width / 2f, size.height / 2f)
                             lastAngle = DialMath.angleDegrees(
@@ -120,15 +134,23 @@ fun VolumeDial(
                             )
                             if (!lastAngle.isNaN()) {
                                 val rawDelta = DialMath.shortestAngleDelta(lastAngle, angle)
+                                val nowMs = SystemClock.uptimeMillis()
+                                val dtMs = (nowMs - lastDragUptimeMs).coerceAtLeast(1L)
+                                lastDragUptimeMs = nowMs
+                                // Angular speed from this frame's raw delta (deg/ms).
+                                val speedDegPerMs = abs(rawDelta) / dtMs.toFloat()
+                                val allowSnap = DialMath.isSnapSpeed(speedDegPerMs)
                                 // Hard-stop: ignore rotation that would pass 0% or 100%.
                                 val applied = DialMath.clampRotationDegrees(rawDelta, dragPercent)
                                 if (applied != 0f) {
-                                    // Caller applies rotation and may snap to a whole percent.
-                                    val newPercent = latestOnRotate.value(applied)
+                                    val newPercent = latestOnRotate.value(applied, allowSnap)
                                     dragPercent = newPercent
                                     val tick = DialMath.tickIndexFromPercent(newPercent)
                                     val crossed = DialMath.ticksCrossed(lastTick, tick)
-                                    val nowAtMajor = DialMath.isInWholePercentSnapZone(newPercent)
+                                    // "At major" only when we actually snapped onto a whole percent.
+                                    val nowAtMajor = allowSnap &&
+                                        DialMath.isInWholePercentSnapZone(newPercent) &&
+                                        newPercent == DialMath.nearestWholePercent(newPercent)
                                     val enteredMajor = nowAtMajor && !wasAtMajor
                                     val includesMajor =
                                         crossed != 0 && DialMath.crossedIncludesMajor(lastTick, tick)

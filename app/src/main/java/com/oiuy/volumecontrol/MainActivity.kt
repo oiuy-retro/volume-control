@@ -74,11 +74,15 @@ class MainActivity : ComponentActivity() {
                     ) {
                         VolumeDial(
                             percent = percent,
-                            onRotateDegrees = { degrees ->
+                            onRotateDegrees = { degrees, allowSnap ->
                                 val continuous = controller.adjustByDegrees(degrees)
-                                val snapped = DialMath.snapToWholePercentIfNear(continuous)
-                                percent = if (snapped != continuous) {
-                                    controller.setFractionalPercent(snapped)
+                                percent = if (allowSnap) {
+                                    val snapped = DialMath.snapToWholePercentIfNear(continuous)
+                                    if (snapped != continuous) {
+                                        controller.setFractionalPercent(snapped)
+                                    } else {
+                                        continuous
+                                    }
                                 } else {
                                     continuous
                                 }

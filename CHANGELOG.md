@@ -4,14 +4,14 @@
 
 - Stationary bezel ticks: 100 fine marks stay fixed on the dial rim; only the knob and indicator rotate with volume.
 - Twelve o'clock is the landmark for each 10% volume step (0, 10, 20, …, 100). Major marks every 36° (1% of max / whole display percent); the noon mark is emphasized.
-- Whole-percent snap: when the dial is within ±0.1 percentage points of an integer percent (a thicker bezel mark), the reported volume snaps to that whole percent. STREAM_MUSIC follows the snapped value.
-- Two-tier haptics: fine ticks use the platform tick constant plus an 8 ms / amplitude 100 one-shot; whole-percent detents use LONG_PRESS plus a 28 ms / amplitude 255 one-shot. Shared 12 ms rate limit; major pulse resets the timer. Major haptic fires on entering a snap zone (or when a fast spin crosses a major); not while holding inside the zone. Prefer one-shots over composition primitives.
+- Whole-percent snap: when drag speed is at or below about 0.18 deg/ms (~180°/s) and the dial is within ±0.2 percentage points of an integer percent (two fine ticks / thicker bezel mark), the reported volume snaps to that whole percent. Faster spins stay continuous. STREAM_MUSIC follows the snapped value.
+- Two-tier haptics: fine ticks use the platform tick constant plus a light 5 ms / amplitude 65 one-shot; whole-percent detents use LONG_PRESS plus a 28 ms / amplitude 255 one-shot. Shared 12 ms rate limit; major pulse resets the timer. Major haptic fires on entering a snap (or when a fast spin crosses a major tick); not while holding inside the zone.
 - Hard stops: counterclockwise rotation is ignored at 0%, clockwise at 100%. Blocked motion does not fire haptics.
 - Indicator angle follows fine percent within the current 10% decade so landmarks line up with twelve o'clock.
 - System volume panel (`FLAG_SHOW_UI`) is rate-limited to about once every 120 ms.
 - Home-screen widget updates on drag end only, not on every drag pixel.
 - ContentObserver no longer calls `syncFromSystem()` while the dial is being dragged (avoids freezing / jumping the fine level).
-- Bumped versionName to 0.1.1 and versionCode to 5 for the next device-test Pre-release (installs over versionCode 4).
+- Bumped versionName to 0.1.1 and versionCode to 6 for the next device-test Pre-release (installs over versionCode 5).
 
 ## 0.1.0
 

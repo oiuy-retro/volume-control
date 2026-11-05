@@ -168,27 +168,36 @@ class DialMathTest {
 
     @Test
     fun snapToWholePercentIfNear() {
-        // Within ±0.1 of 47 → snap
+        // Within ±0.2 of 47 → snap
         assertEquals(47f, DialMath.snapToWholePercentIfNear(47.0f), 0.001f)
-        assertEquals(47f, DialMath.snapToWholePercentIfNear(47.1f), 0.001f)
-        assertEquals(47f, DialMath.snapToWholePercentIfNear(46.9f), 0.001f)
+        assertEquals(47f, DialMath.snapToWholePercentIfNear(47.2f), 0.001f)
+        assertEquals(47f, DialMath.snapToWholePercentIfNear(46.8f), 0.001f)
         // Outside zone → continuous
-        assertEquals(47.15f, DialMath.snapToWholePercentIfNear(47.15f), 0.001f)
-        assertEquals(46.85f, DialMath.snapToWholePercentIfNear(46.85f), 0.001f)
+        assertEquals(47.25f, DialMath.snapToWholePercentIfNear(47.25f), 0.001f)
+        assertEquals(46.75f, DialMath.snapToWholePercentIfNear(46.75f), 0.001f)
         // Midpoint between wholes is far from both
         assertEquals(46.5f, DialMath.snapToWholePercentIfNear(46.5f), 0.001f)
         // Edges of range
-        assertEquals(0f, DialMath.snapToWholePercentIfNear(0.05f), 0.001f)
-        assertEquals(100f, DialMath.snapToWholePercentIfNear(99.95f), 0.001f)
+        assertEquals(0f, DialMath.snapToWholePercentIfNear(0.1f), 0.001f)
+        assertEquals(100f, DialMath.snapToWholePercentIfNear(99.9f), 0.001f)
     }
 
     @Test
     fun isInWholePercentSnapZoneEnterLeave() {
         assertTrue(DialMath.isInWholePercentSnapZone(47.0f))
-        assertTrue(DialMath.isInWholePercentSnapZone(47.1f))
-        assertTrue(DialMath.isInWholePercentSnapZone(46.9f))
-        assertTrue(!DialMath.isInWholePercentSnapZone(47.15f))
-        assertTrue(!DialMath.isInWholePercentSnapZone(46.85f))
+        assertTrue(DialMath.isInWholePercentSnapZone(47.2f))
+        assertTrue(DialMath.isInWholePercentSnapZone(46.8f))
+        assertTrue(!DialMath.isInWholePercentSnapZone(47.25f))
+        assertTrue(!DialMath.isInWholePercentSnapZone(46.75f))
+    }
+
+    @Test
+    fun isSnapSpeedGatesFastSpins() {
+        assertTrue(DialMath.isSnapSpeed(0f))
+        assertTrue(DialMath.isSnapSpeed(0.18f))
+        assertTrue(DialMath.isSnapSpeed(0.05f))
+        assertTrue(!DialMath.isSnapSpeed(0.1801f))
+        assertTrue(!DialMath.isSnapSpeed(1.0f))
     }
 
     @Test
@@ -241,6 +250,7 @@ class DialMathTest {
 
     @Test
     fun wholePercentSnapZoneConstant() {
-        assertEquals(0.1f, DialMath.WHOLE_PERCENT_SNAP_ZONE, 0.0001f)
+        assertEquals(0.2f, DialMath.WHOLE_PERCENT_SNAP_ZONE, 0.0001f)
+        assertEquals(0.18f, DialMath.SNAP_MAX_SPEED_DEG_PER_MS, 0.0001f)
     }
 }

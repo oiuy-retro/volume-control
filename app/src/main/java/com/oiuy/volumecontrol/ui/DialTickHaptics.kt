@@ -76,9 +76,9 @@ class DialTickHaptics(context: Context) {
     companion object {
         const val MIN_INTERVAL_MS: Long = 12L
 
-        /** Heavier fine tick than the previous 5 ms / amplitude 65 pair. */
-        private const val FINE_ONE_SHOT_MS: Long = 8L
-        private const val FINE_ONE_SHOT_AMPLITUDE: Int = 100
+        /** Light fine tick (same feel as pre.1 / early builds). */
+        private const val FINE_ONE_SHOT_MS: Long = 5L
+        private const val FINE_ONE_SHOT_AMPLITUDE: Int = 65
 
         /** Strong whole-percent detent: longer and full amplitude. */
         private const val MAJOR_ONE_SHOT_MS: Long = 28L
