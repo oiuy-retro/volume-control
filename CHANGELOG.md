@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 (unreleased)
+
+- The dial now shows the actual Android media volume level, for example "Level 7 of 15" with "47% volume level" (position in the level range, not loudness). The maximum is read from `AudioManager.getStreamMaxVolume`, never hardcoded.
+- Removed the 0.1% fractional readout, the 100 fine bezel ticks, the whole-percent magnet and its re-snap latch, and the fine/major haptic tiers. Media volume only changes in whole levels, so those suggested control that did not exist.
+- The stationary bezel has one mark per real level. The indicator, progress ring, and haptic detent move only when the level read back from the system changes.
+- Turning is still about 10% of the range per full turn. A small dead band (30°, at most a quarter level) prevents flapping at a level boundary.
+- The level is read back after every change. If Android caps or refuses a level, the dial stops there for that gesture instead of building up hidden travel.
+- Widget shows the level (`7/15`) and `47% level`. Its +/− now move a consistent number of whole levels (about 10% of the range, at least one).
+- Docs explain discrete, device-dependent media levels and Bluetooth absolute volume limits.
+- versionName 0.1.2, versionCode 12.
+
+## 0.1.1 (pre-releases only)
 
 - Stationary bezel ticks: 100 fine marks stay fixed on the dial rim; only the knob and indicator rotate with volume.
 - Twelve o'clock is the landmark for each 10% volume step (0, 10, 20, …, 100). Major marks every 36° (1% of max / whole display percent); the noon mark is emphasized.

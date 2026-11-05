@@ -8,100 +8,46 @@ import android.os.SystemClock
  * Thin wrapper around [AudioManager] for STREAM_MUSIC.
  * Changing media volume does not require a runtime permission.
  *
- * Keeps a fractional level so fine dial turns accumulate correctly against
- * coarse stream indices (often only ~15 steps). The UI reads
- * [fractionalPercent] so the center readout can update every 0.1% tick
- * even when the integer stream index has not moved yet.
+ * Media volume is a whole-number index from 0 to [maxVolume] (device-dependent,
+ * read every time). Apps cannot set anything finer for the global stream, so
+ * this class only ever reports the actual index read back from the system.
  */
-class MediaVolumeController(context: Context) {
+class MediaVolumeController(context: Context) : StreamVolumePort {
     private val audioManager =
         context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    private var fractionalLevel: Float = currentVolume.toFloat()
+    private val tracker = LevelTracker(this)
     private var lastShowUiUptimeMs: Long = 0L
 
-    val maxVolume: Int
+    override val maxIndex: Int
         get() = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
 
-    val currentVolume: Int
+    override val currentIndex: Int
         get() = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
 
-    /** Coarse percent from the live integer stream index (widget / system sync). */
-    val percent: Int
-        get() = DialMath.percentOf(currentVolume, maxVolume)
-
-    /** Fine percent 0..100 from the fractional level (one decimal place is meaningful). */
-    fun fractionalPercent(): Float = DialMath.fractionalPercentOf(fractionalLevel, maxVolume)
-
-    fun syncFromSystem() {
-        fractionalLevel = currentVolume.toFloat()
+    override fun setIndex(index: Int) {
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0)
     }
 
-    fun setVolume(index: Int) {
-        val clamped = index.coerceIn(0, maxVolume)
-        if (clamped != currentVolume) {
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, clamped, 0)
-        }
-        fractionalLevel = clamped.toFloat()
-    }
+    val maxVolume: Int get() = maxIndex
+    val currentVolume: Int get() = currentIndex
 
-    /**
-     * Drive STREAM_MUSIC from a 0..100 display percent **without** moving the
-     * raw [fractionalLevel] accumulator. Used as a tiny-magnet output overlay so
-     * the next finger delta still continues from the continuous raw percent.
-     */
-    fun setFractionalPercent(percent: Float, preserveRawAccumulator: Boolean): Float {
-        if (maxVolume <= 0) return 0f
-        val p = percent.coerceIn(0f, 100f)
-        val level = DialMath.clampFractional((p / 100f) * maxVolume.toFloat(), maxVolume)
-        val next = DialMath.toStreamIndex(level, maxVolume)
-        if (next != currentVolume) {
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-        }
-        if (!preserveRawAccumulator) {
-            fractionalLevel = level
-        }
-        return if (preserveRawAccumulator) {
-            // Reported overlay percent (snapped); raw stays in fractionalLevel.
-            p
-        } else {
-            fractionalPercent()
-        }
-    }
+    fun syncFromSystem() = tracker.syncFromSystem()
 
-    /**
-     * Apply a dial rotation of [deltaDegrees]. Returns the new fractional percent
-     * (0..100). The integer stream index is updated only when rounding changes it.
-     * Callers should clamp [deltaDegrees] with [DialMath.clampRotationDegrees] first
-     * so hard stops at 0% / 100% are respected in the gesture as well.
-     */
-    fun adjustByDegrees(deltaDegrees: Float): Float {
-        if (deltaDegrees == 0f) return fractionalPercent()
-        val delta = DialMath.volumeDeltaFromDegrees(deltaDegrees, maxVolume)
-        // Resync if the system volume was changed elsewhere since last adjust.
-        if (kotlin.math.abs(fractionalLevel - currentVolume) > 1.01f) {
-            syncFromSystem()
-        }
-        fractionalLevel = DialMath.clampFractional(fractionalLevel + delta, maxVolume)
-        val next = DialMath.toStreamIndex(fractionalLevel, maxVolume)
-        if (next != currentVolume) {
-            // No FLAG_SHOW_UI here: the dial shows the system panel on tick
-            // crossings via [showSystemVolumeUi], rate-limited separately.
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-        }
-        return fractionalPercent()
-    }
+    /** Start of a dial drag: retry any level the system refused last gesture. */
+    fun beginGesture() = tracker.beginGesture()
 
-    fun adjustByPercentStep(percentOfMax: Float): Int {
-        val next = DialMath.applyPercentStep(currentVolume, percentOfMax, maxVolume)
-        setVolume(next)
-        return next
-    }
+    fun clampRotationDegrees(deltaDegrees: Float): Float = tracker.clampRotation(deltaDegrees)
+
+    /** Apply a dial rotation. Returns the actual level change (often none). */
+    fun adjustByDegrees(deltaDegrees: Float): LevelChange = tracker.rotate(deltaDegrees)
+
+    /** Widget +/−: move about 10% of the range in whole levels. Returns the actual index. */
+    fun stepByWidget(direction: Int): Int = tracker.stepByWidget(direction)
 
     /**
      * Bring up the system media-volume panel the same way a hardware volume
-     * key does, without necessarily changing the integer stream index.
-     * Rate-limited so rapid tick crossings do not flood the system UI.
+     * key does, without changing the index. Rate-limited.
      */
     fun showSystemVolumeUi() {
         val now = SystemClock.uptimeMillis()
