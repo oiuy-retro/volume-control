@@ -189,6 +189,37 @@ class DialMathTest {
         assertTrue(DialMath.crossedIncludesMajor(471, 469))
     }
 
+
+    @Test
+    fun tinyMagnetSnapsWithinOneFineTick() {
+        assertEquals(47f, DialMath.snapToWholePercentIfNear(47.0f), 0.001f)
+        assertEquals(47f, DialMath.snapToWholePercentIfNear(47.1f), 0.001f)
+        assertEquals(47f, DialMath.snapToWholePercentIfNear(46.9f), 0.001f)
+        assertEquals(47.15f, DialMath.snapToWholePercentIfNear(47.15f), 0.001f)
+        assertEquals(46.85f, DialMath.snapToWholePercentIfNear(46.85f), 0.001f)
+        assertTrue(DialMath.isInWholePercentMagnetZone(46.9f))
+        assertTrue(!DialMath.isInWholePercentMagnetZone(47.15f))
+    }
+
+    @Test
+    fun magnetFingerSpeedUsesLinearPxPerMs() {
+        assertTrue(DialMath.isMagnetFingerSpeed(0f))
+        assertTrue(DialMath.isMagnetFingerSpeed(0.25f))
+        assertTrue(DialMath.isMagnetFingerSpeed(0.1f))
+        assertTrue(!DialMath.isMagnetFingerSpeed(0.2501f))
+        assertTrue(!DialMath.isMagnetFingerSpeed(1.0f))
+        assertEquals(0.1f, DialMath.WHOLE_PERCENT_MAGNET_ZONE, 0.0001f)
+        assertEquals(0.25f, DialMath.MAGNET_MAX_FINGER_SPEED_PX_PER_MS, 0.0001f)
+    }
+
+    @Test
+    fun nearestWholePercentHalfUp() {
+        assertEquals(47f, DialMath.nearestWholePercent(47.4f), 0.001f)
+        assertEquals(47f, DialMath.nearestWholePercent(46.5f), 0.001f)
+        assertEquals(0f, DialMath.nearestWholePercent(-1f), 0.001f)
+        assertEquals(100f, DialMath.nearestWholePercent(100.4f), 0.001f)
+    }
+
     @Test
     fun clampAtEndsStillHardStops() {
         assertEquals(0f, DialMath.clampRotationDegrees(90f, 100f), 0.001f)

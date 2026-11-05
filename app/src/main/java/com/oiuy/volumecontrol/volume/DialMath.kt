@@ -27,6 +27,19 @@ object DialMath {
     /** Major stationary bezel marks every this many fine ticks (36° = 1% of max). */
     const val MAJOR_TICK_EVERY: Int = 10
 
+    /** Tiny magnet zone around each whole display percent (± one fine tick = ±0.1%). */
+    const val WHOLE_PERCENT_MAGNET_ZONE: Float = 0.1f
+
+    /**
+     * Max **linear** finger path speed (pixels per millisecond) at which the
+     * tiny whole-percent magnet still holds. Measured from Euclidean pointer
+     * displacement / dt — not angular deg/ms around the dial.
+     *
+     * ~0.25 px/ms: a deliberate slow nudge stays snapped; a normal swipe
+     * (often ~1 px/ms or faster) frees immediately.
+     */
+    const val MAGNET_MAX_FINGER_SPEED_PX_PER_MS: Float = 0.25f
+
     /** Display percentage points per degree of dial rotation. */
     val displayPercentPerDegree: Float =
         DISPLAY_PERCENT_PER_FULL_TURN / FULL_TURN_DEGREES
@@ -68,6 +81,41 @@ object DialMath {
         }
         return false
     }
+
+    /** Nearest whole display percent in 0..100 (ties round half-up). */
+    fun nearestWholePercent(percent: Float): Float {
+        val p = percent.coerceIn(0f, 100f)
+        return kotlin.math.floor((p + 0.5f).toDouble()).toFloat().coerceIn(0f, 100f)
+    }
+
+    /**
+     * Snap [percent] to a whole display percent when within [zoneDisplayPercent]
+     * of that integer (default ±0.1 = one fine tick). Otherwise return [percent]
+     * unchanged. This is an **output overlay** only — callers must keep a raw
+     * accumulator for the next finger delta (do not rebuild from the snapped value).
+     */
+    fun snapToWholePercentIfNear(
+        percent: Float,
+        zoneDisplayPercent: Float = WHOLE_PERCENT_MAGNET_ZONE,
+    ): Float {
+        val p = percent.coerceIn(0f, 100f)
+        val nearest = nearestWholePercent(p)
+        return if (kotlin.math.abs(p - nearest) <= zoneDisplayPercent + 1e-4f) nearest else p
+    }
+
+    /** True when [percent] lies inside the tiny whole-percent magnet zone. */
+    fun isInWholePercentMagnetZone(
+        percent: Float,
+        zoneDisplayPercent: Float = WHOLE_PERCENT_MAGNET_ZONE,
+    ): Boolean {
+        val p = percent.coerceIn(0f, 100f)
+        val nearest = nearestWholePercent(p)
+        return kotlin.math.abs(p - nearest) <= zoneDisplayPercent + 1e-4f
+    }
+
+    /** True when linear finger speed is slow enough for the magnet to hold. */
+    fun isMagnetFingerSpeed(speedPxPerMs: Float): Boolean =
+        speedPxPerMs <= MAGNET_MAX_FINGER_SPEED_PX_PER_MS
 
     /**
      * Indicator rotation in degrees for [percent].

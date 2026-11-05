@@ -46,6 +46,30 @@ class MediaVolumeController(context: Context) {
     }
 
     /**
+     * Drive STREAM_MUSIC from a 0..100 display percent **without** moving the
+     * raw [fractionalLevel] accumulator. Used as a tiny-magnet output overlay so
+     * the next finger delta still continues from the continuous raw percent.
+     */
+    fun setFractionalPercent(percent: Float, preserveRawAccumulator: Boolean): Float {
+        if (maxVolume <= 0) return 0f
+        val p = percent.coerceIn(0f, 100f)
+        val level = DialMath.clampFractional((p / 100f) * maxVolume.toFloat(), maxVolume)
+        val next = DialMath.toStreamIndex(level, maxVolume)
+        if (next != currentVolume) {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
+        }
+        if (!preserveRawAccumulator) {
+            fractionalLevel = level
+        }
+        return if (preserveRawAccumulator) {
+            // Reported overlay percent (snapped); raw stays in fractionalLevel.
+            p
+        } else {
+            fractionalPercent()
+        }
+    }
+
+    /**
      * Apply a dial rotation of [deltaDegrees]. Returns the new fractional percent
      * (0..100). The integer stream index is updated only when rounding changes it.
      * Callers should clamp [deltaDegrees] with [DialMath.clampRotationDegrees] first

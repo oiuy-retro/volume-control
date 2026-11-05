@@ -1,5 +1,7 @@
 package com.oiuy.volumecontrol.ui
 
+import android.os.SystemClock
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -33,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oiuy.volumecontrol.volume.DialMath
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -43,15 +46,25 @@ import kotlin.math.sin
  * every 10% landmark (0, 10, 20, …, 100). One full turn still changes volume
  * by ±10% of max. Rotation is hard-stopped at 0% and 100%.
  *
- * Volume follows the raw finger path only (continuous percent + clamp). Whole-
- * percent thicker marks fire a strong major haptic when the fine tick index
- * crosses or lands on a major; they do not force the value onto the integer.
- * Fine ticks keep a light haptic on other tick crossings.
+ * Finger deltas always update a continuous **raw** percent first. A tiny
+ * whole-percent magnet (±0.1%) may overlay the reported value while linear
+ * finger speed (px/ms) is below [DialMath.MAGNET_MAX_FINGER_SPEED_PX_PER_MS];
+ * the raw accumulator is never rebuilt from the snapped value. Whole-percent
+ * marks also fire a strong major haptic on edge enter / cross; fine ticks stay
+ * light.
  */
 @Composable
 fun VolumeDial(
     percent: Float,
+    /** Apply rotation to the raw accumulator; must return the new **raw** percent. */
     onRotateDegrees: (Float) -> Float,
+    /**
+     * Publish the percent shown / sent to STREAM_MUSIC (raw, or magnet-snapped
+     * overlay). Called after each applied rotation.
+     */
+    onReportedPercent: (Float) -> Unit = {},
+    /** Current raw accumulator (not the possibly-snapped display percent). */
+    currentRawPercent: () -> Float = { percent },
     onTickCrossed: () -> Unit = {},
     onDragStart: () -> Unit = {},
     onDragEnd: () -> Unit = {},
@@ -61,7 +74,9 @@ fun VolumeDial(
     val context = LocalContext.current
     val tickHaptics = remember(context) { DialTickHaptics(context) }
     var lastAngle by remember { mutableFloatStateOf(Float.NaN) }
-    var dragPercent by remember { mutableFloatStateOf(percent) }
+    var rawDragPercent by remember { mutableFloatStateOf(percent) }
+    var lastPointer by remember { mutableStateOf(Offset.Unspecified) }
+    var lastPointerUptimeMs by remember { mutableStateOf(0L) }
     var lastTick by remember { mutableIntStateOf(DialMath.tickIndexFromPercent(percent)) }
     var wasAtMajor by remember {
         mutableStateOf(DialMath.isMajorTickIndex(DialMath.tickIndexFromPercent(percent)))
@@ -69,6 +84,8 @@ fun VolumeDial(
 
     val latestPercent = rememberUpdatedState(percent)
     val latestOnRotate = rememberUpdatedState(onRotateDegrees)
+    val latestOnReported = rememberUpdatedState(onReportedPercent)
+    val latestRawPercent = rememberUpdatedState(currentRawPercent)
     val latestOnTick = rememberUpdatedState(onTickCrossed)
     val latestOnDragStart = rememberUpdatedState(onDragStart)
     val latestOnDragEnd = rememberUpdatedState(onDragEnd)
@@ -98,9 +115,12 @@ fun VolumeDial(
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { offset ->
-                            dragPercent = latestPercent.value
-                            lastTick = DialMath.tickIndexFromPercent(dragPercent)
+                            // Always seed from the raw accumulator, never a snapped display value.
+                            rawDragPercent = latestRawPercent.value()
+                            lastTick = DialMath.tickIndexFromPercent(rawDragPercent)
                             wasAtMajor = DialMath.isMajorTickIndex(lastTick)
+                            lastPointer = offset
+                            lastPointerUptimeMs = SystemClock.uptimeMillis()
                             latestOnDragStart.value()
                             val center = Offset(size.width / 2f, size.height / 2f)
                             lastAngle = DialMath.angleDegrees(
@@ -110,35 +130,57 @@ fun VolumeDial(
                         },
                         onDragEnd = {
                             lastAngle = Float.NaN
+                            lastPointer = Offset.Unspecified
                             latestOnDragEnd.value()
                         },
                         onDragCancel = {
                             lastAngle = Float.NaN
+                            lastPointer = Offset.Unspecified
                             latestOnDragEnd.value()
                         },
                         onDrag = { change, _ ->
                             change.consume()
                             val center = Offset(size.width / 2f, size.height / 2f)
+                            val pos = change.position
                             val angle = DialMath.angleDegrees(
-                                change.position.x - center.x,
-                                change.position.y - center.y,
+                                pos.x - center.x,
+                                pos.y - center.y,
                             )
+                            val nowMs = SystemClock.uptimeMillis()
+                            val dtMs = (nowMs - lastPointerUptimeMs).coerceAtLeast(1L)
+                            val speedPxPerMs = if (lastPointer != Offset.Unspecified) {
+                                hypot(
+                                    (pos.x - lastPointer.x).toDouble(),
+                                    (pos.y - lastPointer.y).toDouble(),
+                                ).toFloat() / dtMs.toFloat()
+                            } else {
+                                0f
+                            }
+                            lastPointer = pos
+                            lastPointerUptimeMs = nowMs
+
                             if (!lastAngle.isNaN()) {
                                 val rawDelta = DialMath.shortestAngleDelta(lastAngle, angle)
-                                // Hard-stop: ignore rotation that would pass 0% or 100%.
-                                val applied = DialMath.clampRotationDegrees(rawDelta, dragPercent)
+                                // Clamp against the raw accumulator (anti-sticky).
+                                val applied = DialMath.clampRotationDegrees(rawDelta, rawDragPercent)
                                 if (applied != 0f) {
-                                    // Continuous finger path only — never snap the value.
-                                    val newPercent = latestOnRotate.value(applied)
-                                    dragPercent = newPercent
-                                    val tick = DialMath.tickIndexFromPercent(newPercent)
+                                    val raw = latestOnRotate.value(applied)
+                                    rawDragPercent = raw
+                                    val holdMagnet = DialMath.isMagnetFingerSpeed(speedPxPerMs) &&
+                                        DialMath.isInWholePercentMagnetZone(raw)
+                                    val reported = if (holdMagnet) {
+                                        DialMath.snapToWholePercentIfNear(raw)
+                                    } else {
+                                        raw
+                                    }
+                                    latestOnReported.value(reported)
+
+                                    val tick = DialMath.tickIndexFromPercent(raw)
                                     val crossed = DialMath.ticksCrossed(lastTick, tick)
                                     val nowAtMajor = DialMath.isMajorTickIndex(tick)
                                     val enteredMajor = nowAtMajor && !wasAtMajor
                                     val includesMajor =
                                         crossed != 0 && DialMath.crossedIncludesMajor(lastTick, tick)
-                                    // One haptic per frame: strong major when entering/crossing
-                                    // a whole-percent tick; light fine otherwise.
                                     if (crossed != 0) {
                                         val major = enteredMajor || includesMajor
                                         tickHaptics.onTickStep(view, crossed, major = major)
