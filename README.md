@@ -5,16 +5,15 @@ A Material 3 Expressive Android app with a large centered dial that changes medi
 ## Dial behavior
 
 - Gesture tracking is relative to the dial center.
-- Visual dial rotation follows the finger 1:1.
 - Volume delta: `(degrees / 360) * 0.10 * maxVolume`.
-- Values are clamped to `0..maxVolume`.
-- The dial face has 100 indents, one every 3.6°, with every 10th indent drawn longer. The indents rotate with the dial.
-- Each indent is one fine position: 100 positions per turn, each worth 0.1% of the stream maximum. Volume itself is applied continuously underneath the indents.
-- Indent crossings are counted from the accumulated (unwrapped) rotation, so crossing the 0°/360° point never produces a false tick, and counterclockwise rotation is counted with floor semantics.
-- A light haptic tick fires when the dial passes an indent. At most one tick fires per input frame and ticks are rate-limited to one every 12 ms, so a fast spin stays crisp instead of turning into a buzz.
-- Haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) together with a short vibrator effect (`PRIMITIVE_LOW_TICK` where supported on API 31+, otherwise a 5 ms one-shot). The vibrator effect keeps ticks working on devices that ignore the constants. The app requests the `VIBRATE` permission for this.
-- The center readout shows the fine fractional media volume to one decimal place (for example `47.3%`), updating on every tick rather than only when the coarse integer stream index changes.
-- Crossing a tick also brings up the Android system media-volume panel on the side (`AudioManager.FLAG_SHOW_UI`), the same panel that appears when you press a hardware volume key. At most one panel refresh is requested per input frame when several ticks are crossed at once.
+- Values are clamped to `0..maxVolume`. Rotation that would go below 0% or above 100% is ignored (hard stops); blocked motion does not fire haptics.
+- A stationary bezel draws 100 fine ticks (one every 3.6°). The ticks do not rotate with the knob. Every 10th tick (36°) is longer; twelve o'clock is emphasized as the landmark for each 10% volume step (0, 10, 20, …, 100).
+- Only the knob and indicator rotate. Indicator angle follows fine volume within the current 10% decade, so the indicator points at twelve o'clock at every 10% landmark.
+- Each fine tick is one position: 100 positions per turn, each worth 0.1% of the stream maximum. Volume is applied continuously underneath the ticks.
+- Tick crossings are counted from the fine percent (0.1% steps). Finger deltas always update a continuous raw percent. A tiny magnet (±0.1% of each whole percent) may overlay the reported value when raw ends in that zone or a fast frame sweeps across the mark (no finger-speed gate). After snapping once, the magnet will not re-engage until raw moves 0.5% (5 fine ticks) away from that whole.
+- Fine tick haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) plus a light 5 ms / amplitude 65 vibrator one-shot. Whole-percent majors use `LONG_PRESS` plus a 28 ms / amplitude 255 one-shot. At most one pulse per input frame. Fines are rate-limited (~12 ms) and are suppressed for 28 ms after a major so they cannot cut the major short; a major is not dropped because a fine fired recently. Major haptic fires when entering or crossing a major tick (including multi-tick jumps). The app requests the `VIBRATE` permission for this.
+- The center readout shows the fine fractional media volume to one decimal place (for example `47.3%`, or `47.0%` while the magnet holds), updating on every tick.
+- Crossing a tick also brings up the Android system media-volume panel (`AudioManager.FLAG_SHOW_UI`), rate-limited to about once every 120 ms so rapid ticks do not flood the panel.
 
 ## Home-screen widget
 
@@ -82,8 +81,8 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 ## Package
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
-- versionName: `0.1.0`
-- versionCode: `3`
+- versionName: `0.1.1`
+- versionCode: `4`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

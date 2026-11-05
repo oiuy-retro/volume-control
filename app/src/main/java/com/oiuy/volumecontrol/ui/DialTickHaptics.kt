@@ -12,70 +12,84 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.HapticFeedbackConstants
 import android.view.View
+import com.oiuy.volumecontrol.volume.DialHapticPolicy
 
 /**
- * Light detent feedback for the volume dial.
+ * Two-tier detent feedback for the volume dial.
  *
- * Callers report integer tick changes via [onTickStep]. At most one pulse is
- * emitted per call (so a fast spin that crosses several ticks in one frame
- * produces one click, not a buzz), and pulses closer together than
- * [MIN_INTERVAL_MS] are dropped.
+ * Callers report tick crossings via [onTickStep]. Pass [major] = true when any
+ * crossed tick is a whole-percent major. At most one pulse per call (fast multi-
+ * tick frames produce one click, not a buzz).
  *
- * Each pulse uses the platform haptic constant on the view and also a short
- * vibrator effect, because some devices ignore the constants or the user has
- * system touch feedback turned off.
+ * Arbitration ([DialHapticPolicy]): majors are not dropped because a fine fired
+ * recently; fines are suppressed for [DialHapticPolicy.MAJOR_PROTECT_MS] after a
+ * major so a short one-shot cannot replace the longer major vibration on device.
  */
 class DialTickHaptics(context: Context) {
     private val vibrator: Vibrator? = resolveVibrator(context.applicationContext)
-    private var lastPulseUptimeMs: Long = 0L
-
-    private val useLowTickPrimitive: Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            vibrator?.areAllPrimitivesSupported(
-                VibrationEffect.Composition.PRIMITIVE_LOW_TICK,
-            ) == true
+    private var lastPulseUptimeMs: Long = DialHapticPolicy.initialLastPulseUptimeMs()
+    private var lastMajorUptimeMs: Long = DialHapticPolicy.initialLastMajorUptimeMs()
 
     /**
-     * Call once per input frame with how many ticks were crossed (signed).
-     * Does nothing when [ticksCrossed] is zero.
+     * Call once per input frame. Does nothing when [ticksCrossed] is zero and
+     * [major] is false.
      */
-    fun onTickStep(view: View, ticksCrossed: Int) {
-        if (ticksCrossed == 0) return
+    fun onTickStep(view: View, ticksCrossed: Int, major: Boolean = false) {
         val now = SystemClock.uptimeMillis()
-        if (now - lastPulseUptimeMs < MIN_INTERVAL_MS) return
-        lastPulseUptimeMs = now
-
-        view.performHapticFeedback(tickConstant())
-        pulseVibrator()
+        when (
+            DialHapticPolicy.decide(
+                ticksCrossed = ticksCrossed,
+                majorCrossing = major,
+                nowMs = now,
+                lastPulseUptimeMs = lastPulseUptimeMs,
+                lastMajorUptimeMs = lastMajorUptimeMs,
+            )
+        ) {
+            DialHapticPolicy.Pulse.NONE -> return
+            DialHapticPolicy.Pulse.MAJOR -> {
+                lastPulseUptimeMs = now
+                lastMajorUptimeMs = now
+                view.performHapticFeedback(
+                    HapticFeedbackConstants.LONG_PRESS,
+                    HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+                )
+                pulseVibrator(MAJOR_ONE_SHOT_MS, MAJOR_ONE_SHOT_AMPLITUDE)
+            }
+            DialHapticPolicy.Pulse.FINE -> {
+                lastPulseUptimeMs = now
+                view.performHapticFeedback(
+                    fineTickConstant(),
+                    HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+                )
+                pulseVibrator(FINE_ONE_SHOT_MS, FINE_ONE_SHOT_AMPLITUDE)
+            }
+        }
     }
 
-    private fun tickConstant(): Int = when {
+    private fun fineTickConstant(): Int = when {
         Build.VERSION.SDK_INT >= 34 -> HapticFeedbackConstants.SEGMENT_FREQUENT_TICK
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 -> HapticFeedbackConstants.TEXT_HANDLE_MOVE
         else -> HapticFeedbackConstants.CLOCK_TICK
     }
 
-    private fun pulseVibrator() {
+    private fun pulseVibrator(durationMs: Long, amplitude: Int) {
         val v = vibrator ?: return
         if (!v.hasVibrator()) return
         try {
-            val effect = if (useLowTickPrimitive) {
-                VibrationEffect.startComposition()
-                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_LOW_TICK, 1f)
-                    .compose()
-            } else {
-                VibrationEffect.createOneShot(ONE_SHOT_MS, ONE_SHOT_AMPLITUDE)
-            }
-            v.vibrate(effect)
+            v.vibrate(VibrationEffect.createOneShot(durationMs, amplitude))
         } catch (_: RuntimeException) {
             // Some OEM vibrator services throw on unsupported effects; ticks are best-effort.
         }
     }
 
     companion object {
-        const val MIN_INTERVAL_MS: Long = 12L
-        private const val ONE_SHOT_MS: Long = 5L
-        private const val ONE_SHOT_AMPLITUDE: Int = 65
+        /** Light fine tick (same feel as pre.1 / early builds). */
+        private const val FINE_ONE_SHOT_MS: Long = 5L
+        private const val FINE_ONE_SHOT_AMPLITUDE: Int = 65
+
+        /** Strong whole-percent detent: longer and full amplitude. */
+        private const val MAJOR_ONE_SHOT_MS: Long = 28L
+        private const val MAJOR_ONE_SHOT_AMPLITUDE: Int = 255
 
         private fun resolveVibrator(context: Context): Vibrator? =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

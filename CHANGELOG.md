@@ -2,15 +2,16 @@
 
 ## Unreleased
 
-- Center percent readout now tracks the fine fractional volume to one decimal place and updates on every dial tick (0.1% of max), not only when the coarse STREAM_MUSIC integer index changes.
-- Crossing a dial tick shows the Android system media-volume panel (`FLAG_SHOW_UI`), matching hardware volume keys; at most once per input frame when several ticks are crossed together.
-- Bumped versionCode to 3 for the next device-test Pre-release (versionName still 0.1.0).
-- Dial face now shows 100 indents (one every 3.6°), with every 10th indent longer.
-- Each indent is a fine position worth 0.1% of the media stream maximum; one full turn is still 10%.
-- Light haptic tick when passing each indent, counted from unwrapped accumulated rotation, limited to one tick per frame and one every 12 ms.
-- Replaced the previous haptic that fired on each 10% boundary.
-- Added the `VIBRATE` permission for reliable ticks when system touch feedback is off.
-- Haptic step approach informed by HeliBoard-custom's slider feedback; the code here is an original Apache-2.0 implementation.
+- Stationary bezel ticks: 100 fine marks stay fixed on the dial rim; only the knob and indicator rotate with volume.
+- Twelve o'clock is the landmark for each 10% volume step (0, 10, 20, …, 100). Major marks every 36° (1% of max / whole display percent); the noon mark is emphasized.
+- Tiny whole-percent magnet: while the raw percent is within ±0.1% of an integer, or a fast frame sweeps across a whole-percent mark, the reported value (and STREAM_MUSIC) overlays onto that whole once. No finger-speed gate. After a snap engages, the magnet will not re-engage until raw has moved 0.5% (5 fine ticks) away (anti-jitter). Finger deltas always update a continuous raw accumulator first; the magnet never rebuilds angle/percent from the snapped value.
+- Two-tier haptics: fine ticks use the platform tick constant plus a light 5 ms / amplitude 65 one-shot; whole-percent majors use LONG_PRESS plus a 28 ms / amplitude 255 one-shot. Anti-buzz still rate-limits fines (and majors vs majors) to about 12 ms, but a major is not dropped because a fine fired recently, and fines are suppressed for the 28 ms major duration so they cannot replace an in-flight major vibration. One pulse per frame; multi-tick jumps play one major when any crossed tick is major.
+- Hard stops: counterclockwise rotation is ignored at 0%, clockwise at 100%. Blocked motion does not fire haptics.
+- Indicator angle follows fine percent within the current 10% decade so landmarks line up with twelve o'clock.
+- System volume panel (`FLAG_SHOW_UI`) is rate-limited to about once every 120 ms.
+- Home-screen widget updates on drag end only, not on every drag pixel.
+- ContentObserver no longer calls `syncFromSystem()` while the dial is being dragged (avoids freezing / jumping the fine level).
+- Bumped versionName to 0.1.1 and versionCode to 11 for the next device-test Pre-release (installs over versionCode 10).
 
 ## 0.1.0
 
@@ -19,5 +20,6 @@
 - Edge-to-edge single-activity Compose UI with large centered dial and percent readout.
 - Dynamic color on API 31+ with expressive light / dark fallbacks.
 - Glance home-screen widget with percent display, tap-to-open, and ±10% actions.
+- Dial face showed 100 indents that rotated with the dial; light haptic per indent; fine percent readout; system volume panel on tick crossings.
 - Unit tests for dial math.
 - Apache-2.0 license and third-party attributions.

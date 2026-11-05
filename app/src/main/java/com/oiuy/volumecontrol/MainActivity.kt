@@ -26,6 +26,7 @@ import com.oiuy.volumecontrol.ui.VolumeControlTheme
 import com.oiuy.volumecontrol.ui.VolumeDial
 import com.oiuy.volumecontrol.volume.MediaVolumeController
 import com.oiuy.volumecontrol.widget.VolumeDialWidgetReceiver
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,10 +41,15 @@ class MainActivity : ComponentActivity() {
                     val context = LocalContext.current
                     val controller = remember { MediaVolumeController(context) }
                     var percent by remember { mutableFloatStateOf(controller.fractionalPercent()) }
+                    val dragging = remember { AtomicBoolean(false) }
 
                     DisposableEffect(Unit) {
                         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
                             override fun onChange(selfChange: Boolean, uri: Uri?) {
+                                // Do not syncFromSystem while the user is dragging the dial.
+                                // Our own setStreamVolume would otherwise reset the fine
+                                // fractional level and freeze / jump the dial.
+                                if (dragging.get()) return
                                 controller.syncFromSystem()
                                 percent = controller.fractionalPercent()
                                 VolumeDialWidgetReceiver.requestUpdate(context)
@@ -68,12 +74,32 @@ class MainActivity : ComponentActivity() {
                         VolumeDial(
                             percent = percent,
                             onRotateDegrees = { degrees ->
-                                percent = controller.adjustByDegrees(degrees)
-                                VolumeDialWidgetReceiver.requestUpdate(context)
-                                percent
+                                // Always advance the raw accumulator from finger deltas.
+                                controller.adjustByDegrees(degrees)
                             },
+                            onReportedPercent = { reported ->
+                                val raw = controller.fractionalPercent()
+                                if (kotlin.math.abs(reported - raw) > 1e-4f) {
+                                    // Magnet overlay: STREAM_MUSIC follows snapped value;
+                                    // raw fractionalLevel is preserved for the next delta.
+                                    controller.setFractionalPercent(
+                                        reported,
+                                        preserveRawAccumulator = true,
+                                    )
+                                }
+                                percent = reported
+                            },
+                            currentRawPercent = { controller.fractionalPercent() },
                             onTickCrossed = {
                                 controller.showSystemVolumeUi()
+                            },
+                            onDragStart = { dragging.set(true) },
+                            onDragEnd = {
+                                dragging.set(false)
+                                // Ensure stream matches raw when the gesture ends.
+                                percent = controller.fractionalPercent()
+                                // Widget refresh once per gesture, not every drag pixel.
+                                VolumeDialWidgetReceiver.requestUpdate(context)
                             },
                         )
                     }
