@@ -36,31 +36,35 @@ import androidx.glance.unit.ColorProvider
 import com.oiuy.volumecontrol.MainActivity
 import com.oiuy.volumecontrol.R
 import com.oiuy.volumecontrol.volume.MediaVolumeController
+import com.oiuy.volumecontrol.volume.VolumeLevelText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * Home-screen widget that mirrors the dial's look (percent + dial face).
+ * Home-screen widget that mirrors the dial: actual media level, level count,
+ * and the rounded percentage of the level range (not loudness).
  *
  * Android app widgets cannot receive continuous rotation gestures. Interaction
- * is limited to: tap dial to open the app; + / − buttons adjust media volume
- * by 10% of the stream max and refresh the widget.
+ * is limited to: tap dial to open the app; + / − buttons move media volume by
+ * about 10% of the range in whole levels and refresh the widget.
  */
 class VolumeDialWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val percent = MediaVolumeController(context).percent
+        val controller = MediaVolumeController(context)
+        val level = controller.currentVolume
+        val maxLevel = controller.maxVolume
         provideContent {
             GlanceTheme {
-                VolumeDialWidgetContent(percent = percent)
+                VolumeDialWidgetContent(level = level, maxLevel = maxLevel)
             }
         }
     }
 }
 
 @Composable
-private fun VolumeDialWidgetContent(percent: Int) {
+private fun VolumeDialWidgetContent(level: Int, maxLevel: Int) {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
@@ -76,14 +80,23 @@ private fun VolumeDialWidgetContent(percent: Int) {
                 .clickable(actionStartActivity<MainActivity>()),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = "$percent%",
-                style = TextStyle(
-                    color = ColorProvider(Color.White),
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = VolumeLevelText.widgetLevel(level, maxLevel),
+                    style = TextStyle(
+                        color = ColorProvider(Color.White),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+                Text(
+                    text = VolumeLevelText.widgetPercent(level, maxLevel),
+                    style = TextStyle(
+                        color = ColorProvider(Color.White),
+                        fontSize = 12.sp,
+                    ),
+                )
+            }
         }
         Spacer(GlanceModifier.height(8.dp))
         Row(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -120,7 +133,7 @@ class IncreaseVolumeAction : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters,
     ) {
-        MediaVolumeController(context).adjustByPercentStep(VolumeActions.EXTRA_PERCENT_STEP)
+        MediaVolumeController(context).stepByWidget(+1)
         VolumeDialWidget().update(context, glanceId)
     }
 }
@@ -131,7 +144,7 @@ class DecreaseVolumeAction : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters,
     ) {
-        MediaVolumeController(context).adjustByPercentStep(-VolumeActions.EXTRA_PERCENT_STEP)
+        MediaVolumeController(context).stepByWidget(-1)
         VolumeDialWidget().update(context, glanceId)
     }
 }

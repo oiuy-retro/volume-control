@@ -3,6 +3,7 @@ package com.oiuy.volumecontrol.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,8 +12,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -30,61 +29,45 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.oiuy.volumecontrol.volume.DialMath
+import com.oiuy.volumecontrol.volume.LevelChange
+import com.oiuy.volumecontrol.volume.VolumeLevelText
 import kotlin.math.cos
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Large tactile dial. Stationary bezel ticks stay fixed; only the knob and
- * indicator rotate. Indicator angle follows fine volume so twelve o'clock is
- * every 10% landmark (0, 10, 20, …, 100). One full turn still changes volume
- * by ±10% of max. Rotation is hard-stopped at 0% and 100%.
+ * Large rotary dial for Android media volume.
  *
- * Finger deltas always update a continuous **raw** percent first. A tiny
- * whole-percent magnet (±0.1%) may overlay the reported value when raw ends in
- * zone or a fast frame **sweeps across** a whole mark (no finger-speed gate).
- * After a snap engages, no magnet can re-engage until raw moves 0.5% (5 fine
- * ticks) away. The raw accumulator is never rebuilt from the snapped value.
- * Whole-percent marks fire a strong major haptic on edge enter / cross (major
- * wins over recent fines; fines cannot cut short an in-flight major).
+ * The stationary bezel has one detent mark per real `STREAM_MUSIC` level
+ * (count read from the system, not hardcoded). The knob indicator, progress
+ * arc, readout, and haptic pulse move only when the actual level changes.
+ *
+ * Finger rotation still accumulates continuously (hidden, 10% of the range per
+ * full turn) so turning stays slow and deliberate, but that hidden target is
+ * not displayed and does not cause haptics. Hard stops at level 0 and max.
  */
 @Composable
 fun VolumeDial(
-    percent: Float,
-    /** Apply rotation to the raw accumulator; must return the new **raw** percent. */
-    onRotateDegrees: (Float) -> Float,
-    /**
-     * Publish the percent shown / sent to STREAM_MUSIC (raw, or magnet-snapped
-     * overlay). Called after each applied rotation.
-     */
-    onReportedPercent: (Float) -> Unit = {},
-    /** Current raw accumulator (not the possibly-snapped display percent). */
-    currentRawPercent: () -> Float = { percent },
-    onTickCrossed: () -> Unit = {},
+    level: Int,
+    maxLevel: Int,
+    /** Hard-stop clamp of a rotation delta; returns the portion that may apply. */
+    clampRotation: (Float) -> Float,
+    /** Apply rotation; returns the actual level change read back from the system. */
+    onRotateDegrees: (Float) -> LevelChange,
+    onLevelChanged: (LevelChange) -> Unit = {},
     onDragStart: () -> Unit = {},
     onDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
     val context = LocalContext.current
-    val tickHaptics = remember(context) { DialTickHaptics(context) }
+    val haptics = remember(context) { DialTickHaptics(context) }
     var lastAngle by remember { mutableFloatStateOf(Float.NaN) }
-    var rawDragPercent by remember { mutableFloatStateOf(percent) }
-    var lastTick by remember { mutableIntStateOf(DialMath.tickIndexFromPercent(percent)) }
-    var wasAtMajor by remember {
-        mutableStateOf(DialMath.isMajorTickIndex(DialMath.tickIndexFromPercent(percent)))
-    }
-    var lastSnappedWhole by remember { mutableFloatStateOf(Float.NaN) }
-    var magnetHolding by remember { mutableStateOf(false) }
 
-    val latestPercent = rememberUpdatedState(percent)
+    val latestClamp = rememberUpdatedState(clampRotation)
     val latestOnRotate = rememberUpdatedState(onRotateDegrees)
-    val latestOnReported = rememberUpdatedState(onReportedPercent)
-    val latestRawPercent = rememberUpdatedState(currentRawPercent)
-    val latestOnTick = rememberUpdatedState(onTickCrossed)
+    val latestOnLevelChanged = rememberUpdatedState(onLevelChanged)
     val latestOnDragStart = rememberUpdatedState(onDragStart)
     val latestOnDragEnd = rememberUpdatedState(onDragEnd)
 
@@ -92,19 +75,17 @@ fun VolumeDial(
     val dialColor = MaterialTheme.colorScheme.primary
     val indicatorColor = MaterialTheme.colorScheme.onPrimary
     val ringColor = MaterialTheme.colorScheme.secondary
-    val bezelMinor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.40f)
-    val bezelMajor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+    val bezelMark = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f)
     val bezelNoon = MaterialTheme.colorScheme.secondary
 
-    val displayPercent = formatFinePercent(percent)
-    val indicatorDegrees = DialMath.indicatorDegreesFromPercent(percent)
+    val sweepDegrees = DialMath.levelSweepDegrees(level, maxLevel)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .padding(24.dp)
-            .semantics { contentDescription = "Volume dial, $displayPercent percent" },
+            .semantics { contentDescription = VolumeLevelText.contentDescription(level, maxLevel) },
         contentAlignment = Alignment.Center,
     ) {
         Canvas(
@@ -113,12 +94,6 @@ fun VolumeDial(
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { offset ->
-                            // Always seed from the raw accumulator, never a snapped display value.
-                            rawDragPercent = latestRawPercent.value()
-                            lastTick = DialMath.tickIndexFromPercent(rawDragPercent)
-                            wasAtMajor = DialMath.isMajorTickIndex(lastTick)
-                            lastSnappedWhole = Float.NaN
-                            magnetHolding = false
                             latestOnDragStart.value()
                             val center = Offset(size.width / 2f, size.height / 2f)
                             lastAngle = DialMath.angleDegrees(
@@ -142,40 +117,17 @@ fun VolumeDial(
                                 pos.x - center.x,
                                 pos.y - center.y,
                             )
-
                             if (!lastAngle.isNaN()) {
                                 val rawDelta = DialMath.shortestAngleDelta(lastAngle, angle)
-                                // Clamp against the raw accumulator (anti-sticky).
-                                val applied = DialMath.clampRotationDegrees(rawDelta, rawDragPercent)
+                                val applied = latestClamp.value(rawDelta)
                                 if (applied != 0f) {
-                                    val previousRaw = rawDragPercent
-                                    val raw = latestOnRotate.value(applied)
-                                    rawDragPercent = raw
-                                    val magnet = DialMath.resolveMagnetOverlay(
-                                        previousRawPercent = previousRaw,
-                                        rawPercent = raw,
-                                        lastSnappedWhole = lastSnappedWhole,
-                                        currentlyHolding = magnetHolding,
-                                    )
-                                    lastSnappedWhole = magnet.lastSnappedWhole
-                                    magnetHolding = magnet.holding
-                                    latestOnReported.value(magnet.reportedPercent)
-
-                                    val tick = DialMath.tickIndexFromPercent(raw)
-                                    val crossed = DialMath.ticksCrossed(lastTick, tick)
-                                    val nowAtMajor = DialMath.isMajorTickIndex(tick)
-                                    val enteredMajor = nowAtMajor && !wasAtMajor
-                                    val includesMajor =
-                                        crossed != 0 && DialMath.crossedIncludesMajor(lastTick, tick)
-                                    if (crossed != 0) {
-                                        val major = enteredMajor || includesMajor
-                                        tickHaptics.onTickStep(view, crossed, major = major)
-                                        latestOnTick.value()
-                                        lastTick = tick
+                                    val result = latestOnRotate.value(applied)
+                                    if (result.changed) {
+                                        haptics.onLevelChanged(view, result.steps)
+                                        latestOnLevelChanged.value(result)
                                     }
-                                    wasAtMajor = nowAtMajor
                                 }
-                                // Blocked movement past a limit does not fire haptics.
+                                // Blocked motion past a hard stop does nothing.
                             }
                             lastAngle = angle
                         },
@@ -185,79 +137,54 @@ fun VolumeDial(
             val radius = min(size.width, size.height) / 2f
             val stroke = radius * 0.08f
 
-            // Outer ring / track
-            drawCircle(
-                color = trackColor,
-                radius = radius * 0.98f,
-            )
+            drawCircle(color = trackColor, radius = radius * 0.98f)
             drawCircle(
                 color = ringColor.copy(alpha = 0.35f),
                 radius = radius * 0.98f,
                 style = Stroke(width = stroke * 0.5f),
             )
 
-            // Stationary bezel ticks (do not rotate with the indicator).
-            val bezelOuter = radius * 0.96f
-            val minorInner = radius * 0.88f
-            val majorInner = radius * 0.84f
-            val noonInner = radius * 0.80f
-            for (i in 0 until DialMath.TICKS_PER_TURN) {
-                val major = i % DialMath.MAJOR_TICK_EVERY == 0
-                val noon = i == 0
-                val rad = Math.toRadians((i * DialMath.DEGREES_PER_TICK - 90f).toDouble())
-                val cx = cos(rad).toFloat()
-                val cy = sin(rad).toFloat()
-                val inner = when {
-                    noon -> noonInner
-                    major -> majorInner
-                    else -> minorInner
+            // Stationary bezel: one detent mark per real level step. Noon is
+            // both level 0 and the max level.
+            if (maxLevel > 0) {
+                val bezelOuter = radius * 0.96f
+                val markInner = radius * 0.86f
+                val noonInner = radius * 0.80f
+                val markWidth = (stroke * 0.24f).coerceAtMost(radius * 6.28f / maxLevel * 0.35f)
+                for (i in 0 until maxLevel) {
+                    val noon = i == 0
+                    val deg = DialMath.levelSweepDegrees(i, maxLevel)
+                    val rad = Math.toRadians((deg - 90f).toDouble())
+                    val cx = cos(rad).toFloat()
+                    val cy = sin(rad).toFloat()
+                    val inner = if (noon) noonInner else markInner
+                    drawLine(
+                        color = if (noon) bezelNoon else bezelMark,
+                        start = Offset(size.center.x + cx * inner, size.center.y + cy * inner),
+                        end = Offset(size.center.x + cx * bezelOuter, size.center.y + cy * bezelOuter),
+                        strokeWidth = if (noon) stroke * 0.42f else markWidth,
+                        cap = StrokeCap.Round,
+                    )
                 }
-                val color = when {
-                    noon -> bezelNoon
-                    major -> bezelMajor
-                    else -> bezelMinor
-                }
-                val width = when {
-                    noon -> stroke * 0.42f
-                    major -> stroke * 0.28f
-                    else -> stroke * 0.14f
-                }
-                drawLine(
-                    color = color,
-                    start = Offset(size.center.x + cx * inner, size.center.y + cy * inner),
-                    end = Offset(size.center.x + cx * bezelOuter, size.center.y + cy * bezelOuter),
-                    strokeWidth = width,
-                    cap = StrokeCap.Round,
-                )
             }
 
-            // Rotating knob + indicator only
-            rotate(degrees = indicatorDegrees, pivot = size.center) {
-                drawCircle(
-                    color = dialColor,
-                    radius = radius * 0.72f,
-                )
-                val tickStart = Offset(size.center.x, size.center.y - radius * 0.56f)
-                val tickEnd = Offset(size.center.x, size.center.y - radius * 0.42f)
+            // Knob + indicator point at the actual level.
+            rotate(degrees = sweepDegrees, pivot = size.center) {
+                drawCircle(color = dialColor, radius = radius * 0.72f)
                 drawLine(
                     color = indicatorColor,
-                    start = tickStart,
-                    end = tickEnd,
+                    start = Offset(size.center.x, size.center.y - radius * 0.66f),
+                    end = Offset(size.center.x, size.center.y - radius * 0.56f),
                     strokeWidth = stroke,
                     cap = StrokeCap.Round,
                 )
-                drawCircle(
-                    color = indicatorColor.copy(alpha = 0.2f),
-                    radius = radius * 0.18f,
-                )
             }
 
-            // Progress arc for current fine percent (static reference)
-            val sweep = (percent.coerceIn(0f, 100f) / 100f) * 360f
+            // Progress arc for the actual level.
             drawArc(
                 color = ringColor,
                 startAngle = -90f,
-                sweepAngle = sweep,
+                sweepAngle = sweepDegrees,
                 useCenter = false,
                 style = Stroke(width = stroke * 0.35f, cap = StrokeCap.Round),
                 topLeft = Offset(size.center.x - radius * 0.92f, size.center.y - radius * 0.92f),
@@ -265,22 +192,17 @@ fun VolumeDial(
             )
         }
 
-        Text(
-            text = "$displayPercent%",
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 56.sp,
-            ),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = VolumeLevelText.levelOf(level, maxLevel),
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
+            Text(
+                text = VolumeLevelText.percentLabel(level, maxLevel),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
+        }
     }
-}
-
-/** One decimal place so each 0.1% tick is visible in the center readout. */
-internal fun formatFinePercent(percent: Float): String {
-    val clamped = percent.coerceIn(0f, 100f)
-    val tenths = (clamped * 10f).roundToInt()
-    val whole = tenths / 10
-    val frac = tenths % 10
-    return "$whole.$frac"
 }

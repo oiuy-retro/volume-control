@@ -16,7 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,19 +40,20 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val context = LocalContext.current
                     val controller = remember { MediaVolumeController(context) }
-                    var percent by remember { mutableFloatStateOf(controller.fractionalPercent()) }
+                    var level by remember { mutableIntStateOf(controller.currentVolume) }
+                    var maxLevel by remember { mutableIntStateOf(controller.maxVolume) }
                     val dragging = remember { AtomicBoolean(false) }
 
                     DisposableEffect(Unit) {
                         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
                             override fun onChange(selfChange: Boolean, uri: Uri?) {
-                                // Do not syncFromSystem while the user is dragging the dial.
-                                // Our own setStreamVolume would otherwise reset the fine
-                                // fractional level and freeze / jump the dial.
-                                if (dragging.get()) return
-                                controller.syncFromSystem()
-                                percent = controller.fractionalPercent()
-                                VolumeDialWidgetReceiver.requestUpdate(context)
+                                // Always show the real level (keys, other apps, Bluetooth
+                                // device reports). Re-anchoring the hidden dial target is
+                                // left to the next drag frame while dragging.
+                                if (!dragging.get()) controller.syncFromSystem()
+                                level = controller.currentVolume
+                                maxLevel = controller.maxVolume
+                                if (!dragging.get()) VolumeDialWidgetReceiver.requestUpdate(context)
                             }
                         }
                         contentResolver.registerContentObserver(
@@ -72,32 +73,26 @@ class MainActivity : ComponentActivity() {
                         contentAlignment = Alignment.Center,
                     ) {
                         VolumeDial(
-                            percent = percent,
+                            level = level,
+                            maxLevel = maxLevel,
+                            clampRotation = { controller.clampRotationDegrees(it) },
                             onRotateDegrees = { degrees ->
-                                // Always advance the raw accumulator from finger deltas.
-                                controller.adjustByDegrees(degrees)
+                                val result = controller.adjustByDegrees(degrees)
+                                level = result.toIndex
+                                maxLevel = result.maxIndex
+                                result
                             },
-                            onReportedPercent = { reported ->
-                                val raw = controller.fractionalPercent()
-                                if (kotlin.math.abs(reported - raw) > 1e-4f) {
-                                    // Magnet overlay: STREAM_MUSIC follows snapped value;
-                                    // raw fractionalLevel is preserved for the next delta.
-                                    controller.setFractionalPercent(
-                                        reported,
-                                        preserveRawAccumulator = true,
-                                    )
-                                }
-                                percent = reported
+                            onLevelChanged = { controller.showSystemVolumeUi() },
+                            onDragStart = {
+                                dragging.set(true)
+                                controller.beginGesture()
+                                level = controller.currentVolume
+                                maxLevel = controller.maxVolume
                             },
-                            currentRawPercent = { controller.fractionalPercent() },
-                            onTickCrossed = {
-                                controller.showSystemVolumeUi()
-                            },
-                            onDragStart = { dragging.set(true) },
                             onDragEnd = {
                                 dragging.set(false)
-                                // Ensure stream matches raw when the gesture ends.
-                                percent = controller.fractionalPercent()
+                                level = controller.currentVolume
+                                maxLevel = controller.maxVolume
                                 // Widget refresh once per gesture, not every drag pixel.
                                 VolumeDialWidgetReceiver.requestUpdate(context)
                             },
