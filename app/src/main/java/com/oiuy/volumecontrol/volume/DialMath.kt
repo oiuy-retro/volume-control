@@ -31,16 +31,6 @@ object DialMath {
     const val WHOLE_PERCENT_MAGNET_ZONE: Float = 0.1f
 
     /**
-     * Max **linear** finger path speed (pixels per millisecond) at which the
-     * tiny whole-percent magnet still holds. Measured from Euclidean pointer
-     * displacement / dt — not angular deg/ms around the dial.
-     *
-     * ~0.25 px/ms: a deliberate slow nudge stays snapped; a normal swipe
-     * (often ~1 px/ms or faster) frees immediately.
-     */
-    const val MAGNET_MAX_FINGER_SPEED_PX_PER_MS: Float = 0.25f
-
-    /**
      * After a magnet engages, raw percent must move this far (5 fine ticks =
      * 0.5 display %) away from the snapped whole before any magnet can engage
      * again. Prevents edge jitter in the ±1-tick zone.
@@ -120,10 +110,6 @@ object DialMath {
         return kotlin.math.abs(p - nearest) <= zoneDisplayPercent + 1e-4f
     }
 
-    /** True when linear finger speed is slow enough for the magnet to hold. */
-    fun isMagnetFingerSpeed(speedPxPerMs: Float): Boolean =
-        speedPxPerMs <= MAGNET_MAX_FINGER_SPEED_PX_PER_MS
-
     /**
      * True when there is no active re-snap latch, or [rawPercent] has moved at
      * least [MAGNET_RESNAP_CLEAR_DISTANCE] away from [lastSnappedWhole].
@@ -143,12 +129,12 @@ object DialMath {
      * the raw accumulator from it.
      *
      * [lastSnappedWhole] / [currentlyHolding] carry latch state across frames
-     * ([Float.NaN] = no latch). After engage, a new engage is blocked until
-     * raw moves [MAGNET_RESNAP_CLEAR_DISTANCE] away from that whole.
+     * ([Float.NaN] = no latch). Magnet eligibility uses zone + latch only (no
+     * finger-speed gate). After engage, a new engage is blocked until raw moves
+     * [MAGNET_RESNAP_CLEAR_DISTANCE] away from that whole.
      */
     fun resolveMagnetOverlay(
         rawPercent: Float,
-        speedPxPerMs: Float,
         lastSnappedWhole: Float,
         currentlyHolding: Boolean,
     ): MagnetFrameResult {
@@ -157,11 +143,10 @@ object DialMath {
         if (!latch.isNaN() && isMagnetLatchCleared(raw, latch)) {
             latch = Float.NaN
         }
-        val slow = isMagnetFingerSpeed(speedPxPerMs)
         val inZone = isInWholePercentMagnetZone(raw)
 
         if (currentlyHolding) {
-            if (slow && inZone) {
+            if (inZone) {
                 val snapped = if (!latch.isNaN()) latch else snapToWholePercentIfNear(raw)
                 return MagnetFrameResult(
                     reportedPercent = snapped,
@@ -176,8 +161,9 @@ object DialMath {
             )
         }
 
-        // Not holding: engage only when latch is clear and slow + in zone.
-        if (latch.isNaN() && slow && inZone) {
+        // Not holding: engage only when latch is clear and in the tiny magnet zone.
+        // No finger-speed gate — magnet eligibility is position + rearm latch only.
+        if (latch.isNaN() && inZone) {
             val snapped = snapToWholePercentIfNear(raw)
             return MagnetFrameResult(
                 reportedPercent = snapped,

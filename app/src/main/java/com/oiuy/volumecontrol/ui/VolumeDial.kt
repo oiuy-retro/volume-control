@@ -1,7 +1,5 @@
 package com.oiuy.volumecontrol.ui
 
-import android.os.SystemClock
-
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -35,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oiuy.volumecontrol.volume.DialMath
 import kotlin.math.cos
-import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -47,12 +44,12 @@ import kotlin.math.sin
  * by ±10% of max. Rotation is hard-stopped at 0% and 100%.
  *
  * Finger deltas always update a continuous **raw** percent first. A tiny
- * whole-percent magnet (±0.1%) may overlay the reported value while linear
- * finger speed (px/ms) is below [DialMath.MAGNET_MAX_FINGER_SPEED_PX_PER_MS].
- * After a snap engages, no magnet can re-engage until raw moves 0.5% (5 fine
- * ticks) away from that whole — prevents edge jitter. The raw accumulator is
- * never rebuilt from the snapped value. Whole-percent marks also fire a strong
- * major haptic on edge enter / cross; fine ticks stay light.
+ * whole-percent magnet (±0.1%) may overlay the reported value whenever raw is
+ * in zone (no finger-speed gate). After a snap engages, no magnet can
+ * re-engage until raw moves 0.5% (5 fine ticks) away from that whole —
+ * prevents edge jitter. The raw accumulator is never rebuilt from the snapped
+ * value. Whole-percent marks also fire a strong major haptic on edge enter /
+ * cross; fine ticks stay light.
  */
 @Composable
 fun VolumeDial(
@@ -76,8 +73,6 @@ fun VolumeDial(
     val tickHaptics = remember(context) { DialTickHaptics(context) }
     var lastAngle by remember { mutableFloatStateOf(Float.NaN) }
     var rawDragPercent by remember { mutableFloatStateOf(percent) }
-    var lastPointer by remember { mutableStateOf(Offset.Unspecified) }
-    var lastPointerUptimeMs by remember { mutableStateOf(0L) }
     var lastTick by remember { mutableIntStateOf(DialMath.tickIndexFromPercent(percent)) }
     var wasAtMajor by remember {
         mutableStateOf(DialMath.isMajorTickIndex(DialMath.tickIndexFromPercent(percent)))
@@ -124,8 +119,6 @@ fun VolumeDial(
                             wasAtMajor = DialMath.isMajorTickIndex(lastTick)
                             lastSnappedWhole = Float.NaN
                             magnetHolding = false
-                            lastPointer = offset
-                            lastPointerUptimeMs = SystemClock.uptimeMillis()
                             latestOnDragStart.value()
                             val center = Offset(size.width / 2f, size.height / 2f)
                             lastAngle = DialMath.angleDegrees(
@@ -135,12 +128,10 @@ fun VolumeDial(
                         },
                         onDragEnd = {
                             lastAngle = Float.NaN
-                            lastPointer = Offset.Unspecified
                             latestOnDragEnd.value()
                         },
                         onDragCancel = {
                             lastAngle = Float.NaN
-                            lastPointer = Offset.Unspecified
                             latestOnDragEnd.value()
                         },
                         onDrag = { change, _ ->
@@ -151,18 +142,6 @@ fun VolumeDial(
                                 pos.x - center.x,
                                 pos.y - center.y,
                             )
-                            val nowMs = SystemClock.uptimeMillis()
-                            val dtMs = (nowMs - lastPointerUptimeMs).coerceAtLeast(1L)
-                            val speedPxPerMs = if (lastPointer != Offset.Unspecified) {
-                                hypot(
-                                    (pos.x - lastPointer.x).toDouble(),
-                                    (pos.y - lastPointer.y).toDouble(),
-                                ).toFloat() / dtMs.toFloat()
-                            } else {
-                                0f
-                            }
-                            lastPointer = pos
-                            lastPointerUptimeMs = nowMs
 
                             if (!lastAngle.isNaN()) {
                                 val rawDelta = DialMath.shortestAngleDelta(lastAngle, angle)
@@ -173,7 +152,6 @@ fun VolumeDial(
                                     rawDragPercent = raw
                                     val magnet = DialMath.resolveMagnetOverlay(
                                         rawPercent = raw,
-                                        speedPxPerMs = speedPxPerMs,
                                         lastSnappedWhole = lastSnappedWhole,
                                         currentlyHolding = magnetHolding,
                                     )

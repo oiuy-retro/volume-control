@@ -202,14 +202,8 @@ class DialMathTest {
     }
 
     @Test
-    fun magnetFingerSpeedUsesLinearPxPerMs() {
-        assertTrue(DialMath.isMagnetFingerSpeed(0f))
-        assertTrue(DialMath.isMagnetFingerSpeed(0.25f))
-        assertTrue(DialMath.isMagnetFingerSpeed(0.1f))
-        assertTrue(!DialMath.isMagnetFingerSpeed(0.2501f))
-        assertTrue(!DialMath.isMagnetFingerSpeed(1.0f))
+    fun magnetZoneConstant() {
         assertEquals(0.1f, DialMath.WHOLE_PERCENT_MAGNET_ZONE, 0.0001f)
-        assertEquals(0.25f, DialMath.MAGNET_MAX_FINGER_SPEED_PX_PER_MS, 0.0001f)
     }
 
 
@@ -225,10 +219,9 @@ class DialMathTest {
 
     @Test
     fun resolveMagnetOverlayEngagesAndBlocksResnapUntilClear() {
-        // Slow + in zone → engage
+        // In zone → engage (no speed gate)
         var r = DialMath.resolveMagnetOverlay(
             rawPercent = 47.05f,
-            speedPxPerMs = 0.1f,
             lastSnappedWhole = Float.NaN,
             currentlyHolding = false,
         )
@@ -236,21 +229,19 @@ class DialMathTest {
         assertEquals(47f, r.lastSnappedWhole, 0.001f)
         assertTrue(r.holding)
 
-        // Release (fast) while still near — latch remains, not holding
+        // Leave zone while holding — release; latch remains
         r = DialMath.resolveMagnetOverlay(
-            rawPercent = 47.05f,
-            speedPxPerMs = 1.0f,
+            rawPercent = 47.2f,
             lastSnappedWhole = r.lastSnappedWhole,
             currentlyHolding = true,
         )
-        assertEquals(47.05f, r.reportedPercent, 0.001f)
+        assertEquals(47.2f, r.reportedPercent, 0.001f)
         assertEquals(47f, r.lastSnappedWhole, 0.001f)
         assertTrue(!r.holding)
 
-        // Re-enter zone slowly but only 0.05 away — blocked (jitter guard)
+        // Re-enter zone but only 0.05 away — blocked (jitter guard)
         r = DialMath.resolveMagnetOverlay(
             rawPercent = 47.05f,
-            speedPxPerMs = 0.1f,
             lastSnappedWhole = r.lastSnappedWhole,
             currentlyHolding = false,
         )
@@ -261,7 +252,6 @@ class DialMathTest {
         // Move 0.5% away → latch clears; still outside zone so no engage
         r = DialMath.resolveMagnetOverlay(
             rawPercent = 47.5f,
-            speedPxPerMs = 0.1f,
             lastSnappedWhole = r.lastSnappedWhole,
             currentlyHolding = false,
         )
@@ -269,10 +259,9 @@ class DialMathTest {
         assertTrue(r.lastSnappedWhole.isNaN())
         assertTrue(!r.holding)
 
-        // Approach another whole slowly → can engage again
+        // Approach another whole → can engage again
         r = DialMath.resolveMagnetOverlay(
             rawPercent = 48.05f,
-            speedPxPerMs = 0.1f,
             lastSnappedWhole = r.lastSnappedWhole,
             currentlyHolding = false,
         )
@@ -282,16 +271,16 @@ class DialMathTest {
     }
 
     @Test
-    fun resolveMagnetOverlayKeepsHoldWhileSlowInZone() {
-        var r = DialMath.resolveMagnetOverlay(46.95f, 0.05f, Float.NaN, false)
+    fun resolveMagnetOverlayKeepsHoldWhileInZone() {
+        var r = DialMath.resolveMagnetOverlay(46.95f, Float.NaN, false)
         assertEquals(47f, r.reportedPercent, 0.001f)
         assertTrue(r.holding)
-        // Stay in zone slowly — keep hold on same whole
-        r = DialMath.resolveMagnetOverlay(47.08f, 0.05f, r.lastSnappedWhole, true)
+        // Stay in zone — keep hold on same whole
+        r = DialMath.resolveMagnetOverlay(47.08f, r.lastSnappedWhole, true)
         assertEquals(47f, r.reportedPercent, 0.001f)
         assertTrue(r.holding)
         // Leave zone — release but latch remains
-        r = DialMath.resolveMagnetOverlay(47.2f, 0.05f, r.lastSnappedWhole, true)
+        r = DialMath.resolveMagnetOverlay(47.2f, r.lastSnappedWhole, true)
         assertEquals(47.2f, r.reportedPercent, 0.001f)
         assertEquals(47f, r.lastSnappedWhole, 0.001f)
         assertTrue(!r.holding)
