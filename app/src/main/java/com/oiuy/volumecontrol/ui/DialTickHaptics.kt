@@ -12,47 +12,57 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.HapticFeedbackConstants
 import android.view.View
+import com.oiuy.volumecontrol.volume.DialHapticPolicy
 
 /**
  * Two-tier detent feedback for the volume dial.
  *
- * Callers report tick crossings via [onTickStep]. Pass [major] = true for a
- * whole-percent detent (thicker bezel mark); otherwise a fine tick. At most one
- * pulse is emitted per call (a fast spin that crosses several ticks in one
- * frame produces one click, not a buzz). Pulses closer together than
- * [MIN_INTERVAL_MS] are dropped. A major pulse resets the shared timestamp so a
- * fine tick cannot land on top of it.
+ * Callers report tick crossings via [onTickStep]. Pass [major] = true when any
+ * crossed tick is a whole-percent major. At most one pulse per call (fast multi-
+ * tick frames produce one click, not a buzz).
  *
- * Each pulse uses a platform haptic constant on the view and a direct vibrator
- * one-shot. The one-shot is what keeps the tap solid when system touch feedback
- * is faint or off. Composition primitives are not preferred here.
+ * Arbitration ([DialHapticPolicy]): majors are not dropped because a fine fired
+ * recently; fines are suppressed for [DialHapticPolicy.MAJOR_PROTECT_MS] after a
+ * major so a short one-shot cannot replace the longer major vibration on device.
  */
 class DialTickHaptics(context: Context) {
     private val vibrator: Vibrator? = resolveVibrator(context.applicationContext)
-    private var lastPulseUptimeMs: Long = 0L
+    private var lastPulseUptimeMs: Long = DialHapticPolicy.initialLastPulseUptimeMs()
+    private var lastMajorUptimeMs: Long = DialHapticPolicy.initialLastMajorUptimeMs()
 
     /**
      * Call once per input frame. Does nothing when [ticksCrossed] is zero and
      * [major] is false.
      */
     fun onTickStep(view: View, ticksCrossed: Int, major: Boolean = false) {
-        if (ticksCrossed == 0 && !major) return
         val now = SystemClock.uptimeMillis()
-        if (now - lastPulseUptimeMs < MIN_INTERVAL_MS) return
-        lastPulseUptimeMs = now
-
-        if (major) {
-            view.performHapticFeedback(
-                HapticFeedbackConstants.LONG_PRESS,
-                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+        when (
+            DialHapticPolicy.decide(
+                ticksCrossed = ticksCrossed,
+                majorCrossing = major,
+                nowMs = now,
+                lastPulseUptimeMs = lastPulseUptimeMs,
+                lastMajorUptimeMs = lastMajorUptimeMs,
             )
-            pulseVibrator(MAJOR_ONE_SHOT_MS, MAJOR_ONE_SHOT_AMPLITUDE)
-        } else {
-            view.performHapticFeedback(
-                fineTickConstant(),
-                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
-            )
-            pulseVibrator(FINE_ONE_SHOT_MS, FINE_ONE_SHOT_AMPLITUDE)
+        ) {
+            DialHapticPolicy.Pulse.NONE -> return
+            DialHapticPolicy.Pulse.MAJOR -> {
+                lastPulseUptimeMs = now
+                lastMajorUptimeMs = now
+                view.performHapticFeedback(
+                    HapticFeedbackConstants.LONG_PRESS,
+                    HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+                )
+                pulseVibrator(MAJOR_ONE_SHOT_MS, MAJOR_ONE_SHOT_AMPLITUDE)
+            }
+            DialHapticPolicy.Pulse.FINE -> {
+                lastPulseUptimeMs = now
+                view.performHapticFeedback(
+                    fineTickConstant(),
+                    HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+                )
+                pulseVibrator(FINE_ONE_SHOT_MS, FINE_ONE_SHOT_AMPLITUDE)
+            }
         }
     }
 
@@ -73,8 +83,6 @@ class DialTickHaptics(context: Context) {
     }
 
     companion object {
-        const val MIN_INTERVAL_MS: Long = 12L
-
         /** Light fine tick (same feel as pre.1 / early builds). */
         private const val FINE_ONE_SHOT_MS: Long = 5L
         private const val FINE_ONE_SHOT_AMPLITUDE: Int = 65

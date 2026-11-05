@@ -44,12 +44,12 @@ import kotlin.math.sin
  * by ±10% of max. Rotation is hard-stopped at 0% and 100%.
  *
  * Finger deltas always update a continuous **raw** percent first. A tiny
- * whole-percent magnet (±0.1%) may overlay the reported value whenever raw is
- * in zone (no finger-speed gate). After a snap engages, no magnet can
- * re-engage until raw moves 0.5% (5 fine ticks) away from that whole —
- * prevents edge jitter. The raw accumulator is never rebuilt from the snapped
- * value. Whole-percent marks also fire a strong major haptic on edge enter /
- * cross; fine ticks stay light.
+ * whole-percent magnet (±0.1%) may overlay the reported value when raw ends in
+ * zone or a fast frame **sweeps across** a whole mark (no finger-speed gate).
+ * After a snap engages, no magnet can re-engage until raw moves 0.5% (5 fine
+ * ticks) away. The raw accumulator is never rebuilt from the snapped value.
+ * Whole-percent marks fire a strong major haptic on edge enter / cross (major
+ * wins over recent fines; fines cannot cut short an in-flight major).
  */
 @Composable
 fun VolumeDial(
@@ -148,9 +148,11 @@ fun VolumeDial(
                                 // Clamp against the raw accumulator (anti-sticky).
                                 val applied = DialMath.clampRotationDegrees(rawDelta, rawDragPercent)
                                 if (applied != 0f) {
+                                    val previousRaw = rawDragPercent
                                     val raw = latestOnRotate.value(applied)
                                     rawDragPercent = raw
                                     val magnet = DialMath.resolveMagnetOverlay(
+                                        previousRawPercent = previousRaw,
                                         rawPercent = raw,
                                         lastSnappedWhole = lastSnappedWhole,
                                         currentlyHolding = magnetHolding,

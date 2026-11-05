@@ -221,6 +221,7 @@ class DialMathTest {
     fun resolveMagnetOverlayEngagesAndBlocksResnapUntilClear() {
         // In zone → engage (no speed gate)
         var r = DialMath.resolveMagnetOverlay(
+            previousRawPercent = 46.5f,
             rawPercent = 47.05f,
             lastSnappedWhole = Float.NaN,
             currentlyHolding = false,
@@ -231,6 +232,7 @@ class DialMathTest {
 
         // Leave zone while holding — release; latch remains
         r = DialMath.resolveMagnetOverlay(
+            previousRawPercent = 47.05f,
             rawPercent = 47.2f,
             lastSnappedWhole = r.lastSnappedWhole,
             currentlyHolding = true,
@@ -241,6 +243,7 @@ class DialMathTest {
 
         // Re-enter zone but only 0.05 away — blocked (jitter guard)
         r = DialMath.resolveMagnetOverlay(
+            previousRawPercent = 47.2f,
             rawPercent = 47.05f,
             lastSnappedWhole = r.lastSnappedWhole,
             currentlyHolding = false,
@@ -251,6 +254,7 @@ class DialMathTest {
 
         // Move 0.5% away → latch clears; still outside zone so no engage
         r = DialMath.resolveMagnetOverlay(
+            previousRawPercent = 47.05f,
             rawPercent = 47.5f,
             lastSnappedWhole = r.lastSnappedWhole,
             currentlyHolding = false,
@@ -261,6 +265,7 @@ class DialMathTest {
 
         // Approach another whole → can engage again
         r = DialMath.resolveMagnetOverlay(
+            previousRawPercent = 47.5f,
             rawPercent = 48.05f,
             lastSnappedWhole = r.lastSnappedWhole,
             currentlyHolding = false,
@@ -272,18 +277,77 @@ class DialMathTest {
 
     @Test
     fun resolveMagnetOverlayKeepsHoldWhileInZone() {
-        var r = DialMath.resolveMagnetOverlay(46.95f, Float.NaN, false)
+        var r = DialMath.resolveMagnetOverlay(46.5f, 46.95f, Float.NaN, false)
         assertEquals(47f, r.reportedPercent, 0.001f)
         assertTrue(r.holding)
         // Stay in zone — keep hold on same whole
-        r = DialMath.resolveMagnetOverlay(47.08f, r.lastSnappedWhole, true)
+        r = DialMath.resolveMagnetOverlay(46.95f, 47.08f, r.lastSnappedWhole, true)
         assertEquals(47f, r.reportedPercent, 0.001f)
         assertTrue(r.holding)
         // Leave zone — release but latch remains
-        r = DialMath.resolveMagnetOverlay(47.2f, r.lastSnappedWhole, true)
+        r = DialMath.resolveMagnetOverlay(47.08f, 47.2f, r.lastSnappedWhole, true)
         assertEquals(47.2f, r.reportedPercent, 0.001f)
         assertEquals(47f, r.lastSnappedWhole, 0.001f)
         assertTrue(!r.holding)
+    }
+
+
+    @Test
+    fun wholesCrossedBySweepBothDirections() {
+        assertEquals(listOf(47f), DialMath.wholesCrossedBySweep(46.5f, 47.5f))
+        assertEquals(listOf(47f, 48f), DialMath.wholesCrossedBySweep(46.5f, 48.5f))
+        assertEquals(listOf(47f), DialMath.wholesCrossedBySweep(47.5f, 46.5f))
+        assertEquals(listOf(48f, 47f), DialMath.wholesCrossedBySweep(48.5f, 46.5f))
+        assertEquals(emptyList<Float>(), DialMath.wholesCrossedBySweep(47.05f, 47.08f))
+        assertEquals(listOf(47f), DialMath.wholesCrossedBySweep(46.5f, 47.0f))
+    }
+
+    @Test
+    fun fastSweepCapturesOnceWhenSkippingEndpointZone() {
+        // Jump clean over ±0.1% zone around 47
+        val r = DialMath.resolveMagnetOverlay(
+            previousRawPercent = 46.5f,
+            rawPercent = 47.5f,
+            lastSnappedWhole = Float.NaN,
+            currentlyHolding = false,
+        )
+        assertEquals(47f, r.reportedPercent, 0.001f)
+        assertEquals(47f, r.lastSnappedWhole, 0.001f)
+        assertTrue(!r.holding) // landed outside zone
+    }
+
+    @Test
+    fun multiTickJumpCapturesFirstWholeOnly() {
+        val r = DialMath.resolveMagnetOverlay(
+            previousRawPercent = 46.2f,
+            rawPercent = 48.6f,
+            lastSnappedWhole = Float.NaN,
+            currentlyHolding = false,
+        )
+        assertEquals(47f, r.reportedPercent, 0.001f)
+        assertEquals(47f, r.lastSnappedWhole, 0.001f)
+    }
+
+    @Test
+    fun rearmAndCaptureNextWholeInSameFrame() {
+        // Latched at 47; endpoint clears latch (≥0.5 away) and sweeps into 48
+        val r = DialMath.resolveMagnetOverlay(
+            previousRawPercent = 47.2f,
+            rawPercent = 48.05f,
+            lastSnappedWhole = 47f,
+            currentlyHolding = false,
+        )
+        assertEquals(48f, r.reportedPercent, 0.001f)
+        assertEquals(48f, r.lastSnappedWhole, 0.001f)
+        assertTrue(r.holding)
+    }
+
+    @Test
+    fun crossedIncludesMajorOnMultiTickJumps() {
+        assertTrue(DialMath.crossedIncludesMajor(465, 475)) // up across 470
+        assertTrue(DialMath.crossedIncludesMajor(475, 465)) // down across 470
+        assertTrue(DialMath.crossedIncludesMajor(460, 490)) // several majors; still true
+        assertTrue(!DialMath.crossedIncludesMajor(471, 479))
     }
 
     @Test

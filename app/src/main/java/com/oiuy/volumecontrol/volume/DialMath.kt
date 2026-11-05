@@ -111,6 +111,42 @@ object DialMath {
     }
 
     /**
+     * Whole-percent marks crossed by a raw move from [fromPercent] to [toPercent],
+     * in travel order. A whole W is included when the half-open segment along the
+     * travel direction contains W (upward: (from, to]; downward: [to, from)).
+     * Used so a fast frame that skips the ±0.1% endpoint zone can still capture
+     * once at a crossed detent.
+     */
+    fun wholesCrossedBySweep(fromPercent: Float, toPercent: Float): List<Float> {
+        val from = fromPercent.coerceIn(0f, 100f)
+        val to = toPercent.coerceIn(0f, 100f)
+        if (from == to) return emptyList()
+        val result = ArrayList<Float>(4)
+        if (to > from) {
+            // Upward: first whole strictly above from, through floor(to)
+            var w = kotlin.math.floor(from.toDouble()).toFloat() + 1f
+            val end = kotlin.math.floor(to.toDouble() + 1e-4).toFloat()
+            while (w <= end + 1e-4f && w <= 100f) {
+                if (w > from + 1e-4f && w <= to + 1e-4f) {
+                    result.add(w)
+                }
+                w += 1f
+            }
+        } else {
+            // Downward: first whole strictly below from, through ceil(to)
+            var w = kotlin.math.ceil(from.toDouble()).toFloat() - 1f
+            val end = kotlin.math.ceil(to.toDouble() - 1e-4).toFloat()
+            while (w >= end - 1e-4f && w >= 0f) {
+                if (w < from - 1e-4f && w >= to - 1e-4f) {
+                    result.add(w)
+                }
+                w -= 1f
+            }
+        }
+        return result
+    }
+
+    /**
      * True when there is no active re-snap latch, or [rawPercent] has moved at
      * least [MAGNET_RESNAP_CLEAR_DISTANCE] away from [lastSnappedWhole].
      * Pass [Float.NaN] for [lastSnappedWhole] when no latch is set.
@@ -124,20 +160,24 @@ object DialMath {
     /**
      * Resolve the magnet output overlay for one drag frame.
      *
-     * Finger deltas must already have updated [rawPercent]. Snap is only the
-     * returned [MagnetFrameResult.reportedPercent]; callers must not rebuild
-     * the raw accumulator from it.
+     * Finger deltas must already have updated [rawPercent] from
+     * [previousRawPercent]. Snap is only the returned
+     * [MagnetFrameResult.reportedPercent]; callers must not rebuild the raw
+     * accumulator from it.
      *
      * [lastSnappedWhole] / [currentlyHolding] carry latch state across frames
-     * ([Float.NaN] = no latch). Magnet eligibility uses zone + latch only (no
+     * ([Float.NaN] = no latch). Magnet eligibility uses endpoint zone, swept
+     * whole crossings between previous and raw, and the rearm latch (no
      * finger-speed gate). After engage, a new engage is blocked until raw moves
      * [MAGNET_RESNAP_CLEAR_DISTANCE] away from that whole.
      */
     fun resolveMagnetOverlay(
+        previousRawPercent: Float,
         rawPercent: Float,
         lastSnappedWhole: Float,
         currentlyHolding: Boolean,
     ): MagnetFrameResult {
+        val prev = previousRawPercent.coerceIn(0f, 100f)
         val raw = rawPercent.coerceIn(0f, 100f)
         var latch = lastSnappedWhole
         if (!latch.isNaN() && isMagnetLatchCleared(raw, latch)) {
@@ -154,22 +194,33 @@ object DialMath {
                     holding = true,
                 )
             }
-            return MagnetFrameResult(
-                reportedPercent = raw,
-                lastSnappedWhole = latch,
-                holding = false,
-            )
+            // Left the zone this frame; fall through so a same-frame sweep that
+            // clears the latch and crosses another whole can still capture once.
         }
 
-        // Not holding: engage only when latch is clear and in the tiny magnet zone.
-        // No finger-speed gate — magnet eligibility is position + rearm latch only.
-        if (latch.isNaN() && inZone) {
-            val snapped = snapToWholePercentIfNear(raw)
-            return MagnetFrameResult(
-                reportedPercent = snapped,
-                lastSnappedWhole = snapped,
-                holding = true,
-            )
+        // Not holding (or just released): engage from endpoint zone or a swept whole.
+        // No finger-speed gate — position + rearm latch only. At most one capture.
+        if (latch.isNaN()) {
+            if (inZone) {
+                val snapped = snapToWholePercentIfNear(raw)
+                return MagnetFrameResult(
+                    reportedPercent = snapped,
+                    lastSnappedWhole = snapped,
+                    holding = true,
+                )
+            }
+            val crossed = wholesCrossedBySweep(prev, raw)
+            if (crossed.isNotEmpty()) {
+                val snapped = crossed.first()
+                // Holding only if we landed in that whole's tiny zone; fast skips
+                // report one capture frame then continue raw (latch still set).
+                return MagnetFrameResult(
+                    reportedPercent = snapped,
+                    lastSnappedWhole = snapped,
+                    holding = isInWholePercentMagnetZone(raw) &&
+                        nearestWholePercent(raw) == snapped,
+                )
+            }
         }
         return MagnetFrameResult(
             reportedPercent = raw,
