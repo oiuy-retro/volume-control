@@ -4,6 +4,7 @@
 
 - Center percent readout now tracks the fine fractional volume to one decimal place and updates on every dial tick (0.1% of max), not only when the coarse STREAM_MUSIC integer index changes.
 - Crossing a dial tick shows the Android system media-volume panel (`FLAG_SHOW_UI`), matching hardware volume keys; at most once per input frame when several ticks are crossed together.
+- Bumped versionCode to 3 for the next device-test Pre-release (versionName still 0.1.0).
 - Dial face now shows 100 indents (one every 3.6°), with every 10th indent longer.
 - Each indent is a fine position worth 0.1% of the media stream maximum; one full turn is still 10%.
 - Light haptic tick when passing each indent, counted from unwrapped accumulated rotation, limited to one tick per frame and one every 12 ms.
