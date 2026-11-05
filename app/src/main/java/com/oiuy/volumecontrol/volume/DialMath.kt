@@ -27,16 +27,6 @@ object DialMath {
     /** Major stationary bezel marks every this many fine ticks (36° = 1% of max). */
     const val MAJOR_TICK_EVERY: Int = 10
 
-    /** Snap zone around each whole display percent (± two fine ticks = ±0.2%). */
-    const val WHOLE_PERCENT_SNAP_ZONE: Float = 0.2f
-
-    /**
-     * Max angular drag speed (degrees per millisecond) at which whole-percent
-     * snap still applies. 0.18 deg/ms ≈ 180°/s: casual slow aiming and careful
-     * nudges snap into a detent; faster spins keep continuous fine control.
-     */
-    const val SNAP_MAX_SPEED_DEG_PER_MS: Float = 0.18f
-
     /** Display percentage points per degree of dial rotation. */
     val displayPercentPerDegree: Float =
         DISPLAY_PERCENT_PER_FULL_TURN / FULL_TURN_DEGREES
@@ -77,43 +67,6 @@ object DialMath {
             if (isMajorTickIndex(t)) return true
         }
         return false
-    }
-
-    /** Nearest whole display percent in 0..100 (ties round away from zero / half-up). */
-    fun nearestWholePercent(percent: Float): Float {
-        val p = percent.coerceIn(0f, 100f)
-        // Avoid kotlin.math.round / rint banker's rounding so 46.5 → 47.
-        return kotlin.math.floor((p + 0.5f).toDouble()).toFloat().coerceIn(0f, 100f)
-    }
-
-    /**
-     * Snap [percent] to a whole display percent when within [zoneDisplayPercent]
-     * of that integer (default ±0.2 = two fine ticks). Otherwise return [percent]
-     * unchanged (still clamped to 0..100). Callers should also gate on drag
-     * speed via [isSnapSpeed] so fast spins stay continuous.
-     */
-    fun snapToWholePercentIfNear(
-        percent: Float,
-        zoneDisplayPercent: Float = WHOLE_PERCENT_SNAP_ZONE,
-    ): Float {
-        val p = percent.coerceIn(0f, 100f)
-        val nearest = nearestWholePercent(p)
-        // Small epsilon so float values like 47.2f still count as ±0.2.
-        return if (kotlin.math.abs(p - nearest) <= zoneDisplayPercent + 1e-4f) nearest else p
-    }
-
-    /** True when [speedDegPerMs] is slow enough for whole-percent snap. */
-    fun isSnapSpeed(speedDegPerMs: Float): Boolean =
-        speedDegPerMs <= SNAP_MAX_SPEED_DEG_PER_MS
-
-    /** True when [percent] lies inside the whole-percent snap zone. */
-    fun isInWholePercentSnapZone(
-        percent: Float,
-        zoneDisplayPercent: Float = WHOLE_PERCENT_SNAP_ZONE,
-    ): Boolean {
-        val p = percent.coerceIn(0f, 100f)
-        val nearest = nearestWholePercent(p)
-        return kotlin.math.abs(p - nearest) <= zoneDisplayPercent + 1e-4f
     }
 
     /**

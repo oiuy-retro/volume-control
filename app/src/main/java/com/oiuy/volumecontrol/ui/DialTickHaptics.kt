@@ -32,9 +32,8 @@ class DialTickHaptics(context: Context) {
     private var lastPulseUptimeMs: Long = 0L
 
     /**
-     * Call once per input frame. [ticksCrossed] may be zero when [major] is true
-     * (entering a snap zone without a tick-index change). Does nothing when both
-     * [ticksCrossed] is zero and [major] is false.
+     * Call once per input frame. Does nothing when [ticksCrossed] is zero and
+     * [major] is false.
      */
     fun onTickStep(view: View, ticksCrossed: Int, major: Boolean = false) {
         if (ticksCrossed == 0 && !major) return
