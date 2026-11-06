@@ -21,8 +21,8 @@ android {
         applicationId = "com.oiuy.volumecontrol"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.1.1"
+        versionCode = 14
+        versionName = "0.1.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
