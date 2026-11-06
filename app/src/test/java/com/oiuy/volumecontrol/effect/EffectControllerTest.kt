@@ -20,9 +20,12 @@ private class FakeBackend(
     var enabled = false
     var released = false
     var failApply = false
+    /** Throw this from apply() (simulates a platform rejection at a named stage). */
+    var applyError: RuntimeException? = null
     var listener: ((Boolean) -> Unit)? = null
 
     override fun apply(db: Float): List<Float> {
+        applyError?.let { throw it }
         if (failApply) throw IllegalStateException("rejected")
         applied += db
         return List(units) { maxOf(db, engineFloor) }
@@ -77,7 +80,8 @@ class EffectControllerTest {
         assertFalse(dpCreated)
         assertEquals(BackendKind.EQUALIZER, s.backend)
         assertEquals(-15f, s.floorDb, 0f)
-        assertTrue(s.attempts.single().contains("API 28"))
+        assertTrue(s.attempts.first().contains("API 28"))
+        assertEquals("Active: Equalizer (fake)", s.attempts.last())
     }
 
     @Test
@@ -86,7 +90,8 @@ class EffectControllerTest {
             { FakeBackend(BackendKind.EQUALIZER, minDb = -15f) })
         val s = c.enable()
         assertEquals(BackendKind.EQUALIZER, s.backend)
-        assertTrue(s.attempts.single().contains("UnsupportedOperationException"))
+        assertTrue(s.attempts.first().contains("UnsupportedOperationException"))
+        assertTrue(s.attempts.first().contains("[create: session 0]"))
     }
 
     @Test
@@ -203,5 +208,135 @@ class EffectControllerTest {
         val s = c.enable()
         assertEquals(1, made)
         assertEquals(-4f, s.requestedDb, 1e-4f)
+    }
+
+    private fun badValue() = IllegalArgumentException("AudioEffect: bad parameter value")
+
+    @Test
+    fun dynamicsConstructorBadValueFallsBackAndIsReportedWithStage() {
+        val c = controller(34, {
+            throw BackendStageException(
+                BackendKind.DYNAMICS_PROCESSING, "constructor (create engine + set architecture)",
+                "session 0, priority 1000", badValue(),
+            )
+        }, { FakeBackend(BackendKind.EQUALIZER, minDb = -15f) })
+        val s = c.enable()
+        assertEquals(BackendKind.EQUALIZER, s.backend)
+        assertEquals(
+            "Failed: DynamicsProcessing [constructor (create engine + set architecture): session 0, priority 1000] " +
+                "IllegalArgumentException: AudioEffect: bad parameter value",
+            s.attempts.first(),
+        )
+    }
+
+    @Test
+    fun dynamicsInputGainBadValueDuringSetupFallsBackAndReleases() {
+        val dp = FakeBackend(BackendKind.DYNAMICS_PROCESSING)
+        dp.applyError = BackendStageException(
+            BackendKind.DYNAMICS_PROCESSING, "setInputGainAllChannelsTo", "0.0 dB on 2 channel(s)", badValue(),
+        )
+        val c = controller(34, { dp }, { FakeBackend(BackendKind.EQUALIZER) })
+        val s = c.enable()
+        assertTrue(dp.released)
+        assertEquals(BackendKind.EQUALIZER, s.backend)
+        assertTrue(s.attempts.first().contains("[setInputGainAllChannelsTo: 0.0 dB on 2 channel(s)]"))
+        assertTrue(s.attempts.first().contains("bad parameter value"))
+    }
+
+    @Test
+    fun plainExceptionFromSetupGetsGenericStage() {
+        val dp = FakeBackend(BackendKind.DYNAMICS_PROCESSING)
+        dp.applyError = badValue()
+        val c = controller(34, { dp }, { FakeBackend(BackendKind.EQUALIZER) })
+        val s = c.enable()
+        assertEquals(
+            "Failed: DynamicsProcessing [setup] IllegalArgumentException: AudioEffect: bad parameter value",
+            s.attempts.first(),
+        )
+    }
+
+    @Test
+    fun dynamicsOnlyPreferenceDoesNotTryEqualizer() {
+        var eqTried = false
+        val c = controller(34, { throw badValue() }, { eqTried = true; FakeBackend(BackendKind.EQUALIZER) })
+        c.setPreference(BackendPreference.DYNAMICS_ONLY)
+        val s = c.enable()
+        assertFalse(eqTried)
+        assertFalse(s.active)
+        assertEquals(1, s.attempts.size)
+        assertTrue(s.message!!.contains("DynamicsProcessing only"))
+        assertTrue(s.message!!.contains("device restriction"))
+    }
+
+    @Test
+    fun equalizerOnlyPreferenceSkipsDynamics() {
+        var dpTried = false
+        val c = controller(34, { dpTried = true; FakeBackend(BackendKind.DYNAMICS_PROCESSING) },
+            { FakeBackend(BackendKind.EQUALIZER, minDb = -12f) })
+        c.setPreference(BackendPreference.EQUALIZER_ONLY)
+        val s = c.enable()
+        assertFalse(dpTried)
+        assertEquals(BackendKind.EQUALIZER, s.backend)
+        assertEquals(BackendPreference.EQUALIZER_ONLY, s.preference)
+    }
+
+    @Test
+    fun preferenceCannotChangeWhileActiveAndSurvivesDisable() {
+        val c = controller(34, { FakeBackend(BackendKind.DYNAMICS_PROCESSING) }, { FakeBackend(BackendKind.EQUALIZER) })
+        c.setPreference(BackendPreference.DYNAMICS_ONLY)
+        c.enable()
+        assertEquals(BackendPreference.DYNAMICS_ONLY, c.setPreference(BackendPreference.EQUALIZER_ONLY).preference)
+        assertEquals(BackendPreference.DYNAMICS_ONLY, c.disable().preference)
+    }
+
+    @Test
+    fun laterSettingFailureShowsStageAndKeepsEffectAttached() {
+        val dp = FakeBackend(BackendKind.DYNAMICS_PROCESSING)
+        val c = controller(34, { dp }, { error("unused") })
+        c.enable()
+        dp.applyError = BackendStageException(
+            BackendKind.DYNAMICS_PROCESSING, "setInputGainAllChannelsTo", "\u22126.0 dB on 2 channel(s)", badValue(),
+        )
+        val s = c.setRequestedDb(-6f)
+        assertTrue(s.active)
+        assertNull(s.confirmedDb)
+        assertEquals(
+            "Effect API rejected the setting: DynamicsProcessing [setInputGainAllChannelsTo: \u22126.0 dB on 2 channel(s)] " +
+                "IllegalArgumentException: AudioEffect: bad parameter value",
+            s.message,
+        )
+    }
+
+    @Test
+    fun platformEffectListIsCapturedAndItsFailureReported() {
+        val c = EffectController(34, { FakeBackend(BackendKind.DYNAMICS_PROCESSING) }, { error("unused") },
+            platformEffects = { listOf("Platform lists DynamicsProcessing: \"x\" by y (mode Insert)") })
+        assertEquals(1, c.enable().platformEffects.size)
+        val c2 = EffectController(34, { throw badValue() }, { throw badValue() },
+            platformEffects = { throw IllegalStateException("boom") })
+        assertTrue(c2.enable().platformEffects.single().contains("IllegalStateException: boom"))
+    }
+
+    @Test
+    fun stageHelperWrapsOnceWithContext() {
+        val e = runCatching {
+            stage(BackendKind.EQUALIZER, "setBandLevel", "band 2 = -600 mB (range -1500..1500 mB)") {
+                throw badValue()
+            }
+        }.exceptionOrNull() as BackendStageException
+        assertEquals(
+            "Equalizer [setBandLevel: band 2 = -600 mB (range -1500..1500 mB)] IllegalArgumentException: AudioEffect: bad parameter value",
+            e.message,
+        )
+        val again = runCatching { stage(BackendKind.EQUALIZER, "outer") { throw e } }.exceptionOrNull()
+        assertTrue(again === e)
+    }
+
+    @Test
+    fun dynamicsPlanUsesFrequencyVariantAndNoStages() {
+        assertEquals(DynamicsConfigPlan.Variant.FAVOR_FREQUENCY_RESOLUTION, DynamicsConfigPlan.variant)
+        assertFalse(DynamicsConfigPlan.PRE_EQ_IN_USE || DynamicsConfigPlan.MBC_IN_USE ||
+            DynamicsConfigPlan.POST_EQ_IN_USE || DynamicsConfigPlan.LIMITER_IN_USE)
+        assertEquals(2, DynamicsConfigPlan.CHANNELS)
     }
 }

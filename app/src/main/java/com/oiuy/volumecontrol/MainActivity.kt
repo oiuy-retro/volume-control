@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
                                 GlobalEffectSession.enable()
                                 VolumeDialWidgetReceiver.requestUpdate(context)
                             },
+                            onPreference = { GlobalEffectSession.setPreference(it) },
                             onDisable = {
                                 GlobalEffectSession.disable()
                                 VolumeDialWidgetReceiver.requestUpdate(context)

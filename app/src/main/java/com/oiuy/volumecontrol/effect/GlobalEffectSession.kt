@@ -25,10 +25,12 @@ object GlobalEffectSession {
             }
         },
         equalizerFactory = { EqualizerGainBackend.create() },
+        platformEffects = { describePlatformEffects() },
         onStateChanged = { state = it },
     )
 
     fun enable() = controller.enable()
+    fun setPreference(p: BackendPreference) = controller.setPreference(p)
     fun disable() = controller.disable()
     fun reset() = controller.reset()
     fun refresh() = controller.refresh()

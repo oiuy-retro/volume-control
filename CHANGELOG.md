@@ -2,6 +2,18 @@
 
 ## 0.1.3 (experimental, pre-release only)
 
+### v0.1.3-pre.2 (versionCode 14)
+
+- Fix: DynamicsProcessing now requests the frequency-resolution variant. pre.1 requested the time-resolution variant, which the AOSP reference engines do not implement (the legacy engine returns an error when setting the engine architecture; the AIDL engine logs "not available now" and builds no engine). On such engines the platform reports that as `IllegalArgumentException: AudioEffect: bad parameter value`. Whether this was the cause of the reported error on the user's device is not confirmed.
+- Every failure is now reported with backend, step (for example constructor, setInputGainAllChannelsTo, setBandLevel, setEnabled), the values involved, and the exception class and message.
+- Backend choice before enabling: Auto, DynamicsProcessing only, or Equalizer only. Auto still falls back to Equalizer when DynamicsProcessing fails at construction, setup, enabling, or read-back.
+- Shows the platform's public effect list entries for DynamicsProcessing and Equalizer (AudioEffect.queryEffects).
+- A failed effect is released before the next backend is tried; a non-SUCCESS setEnabled status is treated as a failure.
+- Fixed an Android 8.x crash risk: the DynamicsProcessing effect type constant is only read on Android 9+.
+
+### v0.1.3-pre.1 (versionCode 13)
+
+
 - Test build of the deprecated global output effect route (audio session 0). The dial sets a requested attenuation in dB instead of Android media volume.
 - Backend: `DynamicsProcessing` input gain (broadband) on Android 9+, falling back to `Equalizer` with equal band reduction (not guaranteed flat). Unsupported devices show a clear message and stay off.
 - Attenuation only, 0 dB to −30 dB (or the Equalizer minimum), 0.1 dB steps, 6 dB per full turn, a click per whole dB, no boost.

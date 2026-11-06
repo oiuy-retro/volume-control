@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.oiuy.volumecontrol.effect.BackendPreference
 import com.oiuy.volumecontrol.effect.EffectState
 import com.oiuy.volumecontrol.effect.GainMath
 
@@ -59,6 +60,7 @@ object ExperimentText {
 fun ExperimentScreen(
     state: EffectState,
     onEnable: () -> Unit,
+    onPreference: (BackendPreference) -> Unit,
     onDisable: () -> Unit,
     onReset: () -> Unit,
     onRequestDb: (Float) -> Unit,
@@ -91,6 +93,28 @@ fun ExperimentScreen(
                 Button(onClick = onEnable) { Text("Enable experiment") }
             }
         }
+        if (!state.active) {
+            Text(
+                "Backend to try:",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                BackendPreference.entries.forEach { p ->
+                    if (p == state.preference) {
+                        Button(onClick = { onPreference(p) }) { Text(p.label) }
+                    } else {
+                        OutlinedButton(onClick = { onPreference(p) }) { Text(p.label) }
+                    }
+                }
+            }
+        } else {
+            Text(
+                "Backend choice: ${state.preference.label}",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
         Column(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -104,7 +128,11 @@ fun ExperimentScreen(
             state.message?.let {
                 Text(it, style = body, color = MaterialTheme.colorScheme.error)
             }
-            state.attempts.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            if (state.attempts.isNotEmpty()) {
+                Text("Last enable attempt:", style = MaterialTheme.typography.labelLarge)
+                state.attempts.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+            state.platformEffects.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             Text(ExperimentText.NOTE_UNVERIFIED, style = MaterialTheme.typography.bodySmall)
             Text(ExperimentText.NOTE_VOLUME, style = MaterialTheme.typography.bodySmall)
         }
