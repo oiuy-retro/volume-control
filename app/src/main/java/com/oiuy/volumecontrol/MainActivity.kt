@@ -17,6 +17,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import com.oiuy.volumecontrol.effect.GlobalEffectSession
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -24,7 +26,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.oiuy.volumecontrol.ui.VolumeControlTheme
 import com.oiuy.volumecontrol.ui.VolumeDial
-import com.oiuy.volumecontrol.volume.MediaVolumeController
+import com.oiuy.volumecontrol.hybrid.HybridMath
+import com.oiuy.volumecontrol.hybrid.HybridVolumeController
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.oiuy.volumecontrol.widget.VolumeDialWidgetReceiver
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -39,8 +50,16 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     val context = LocalContext.current
-                    val controller = remember { MediaVolumeController(context) }
+                    val controller = remember { HybridVolumeController(context).also { it.start() } }
                     var percent by remember { mutableFloatStateOf(controller.fractionalPercent()) }
+                    var readout by remember { mutableStateOf(controller.readout()) }
+                    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+                        GlobalEffectSession.refresh()
+                        controller.reloadCurve()
+                        controller.syncFromSystem()
+                        percent = controller.fractionalPercent()
+                        readout = controller.readout()
+                    }
                     val dragging = remember { AtomicBoolean(false) }
 
                     DisposableEffect(Unit) {
@@ -52,6 +71,7 @@ class MainActivity : ComponentActivity() {
                                 if (dragging.get()) return
                                 controller.syncFromSystem()
                                 percent = controller.fractionalPercent()
+                                readout = controller.readout()
                                 VolumeDialWidgetReceiver.requestUpdate(context)
                             }
                         }
@@ -71,6 +91,10 @@ class MainActivity : ComponentActivity() {
                             .safeDrawingPadding(),
                         contentAlignment = Alignment.Center,
                     ) {
+                      Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                      ) {
                         VolumeDial(
                             percent = percent,
                             onRotateDegrees = { degrees ->
@@ -82,12 +106,10 @@ class MainActivity : ComponentActivity() {
                                 if (kotlin.math.abs(reported - raw) > 1e-4f) {
                                     // Magnet overlay: STREAM_MUSIC follows snapped value;
                                     // raw fractionalLevel is preserved for the next delta.
-                                    controller.setFractionalPercent(
-                                        reported,
-                                        preserveRawAccumulator = true,
-                                    )
+                                    controller.setOutputPercent(reported)
                                 }
                                 percent = reported
+                                readout = controller.readout()
                             },
                             currentRawPercent = { controller.fractionalPercent() },
                             onTickCrossed = {
@@ -99,12 +121,30 @@ class MainActivity : ComponentActivity() {
                                 // Ensure stream matches raw when the gesture ends.
                                 percent = controller.fractionalPercent()
                                 // Widget refresh once per gesture, not every drag pixel.
+                                readout = controller.readout()
                                 VolumeDialWidgetReceiver.requestUpdate(context)
                             },
                         )
+                        Text(
+                            text = readoutText(readout),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                        )
+                      }
                     }
                 }
             }
         }
     }
+}
+
+internal fun readoutText(r: com.oiuy.volumecontrol.hybrid.HybridReadout): String = buildString {
+    append("Android level ${r.streamIndex} of ${r.maxIndex}")
+    if (r.backendName != null) {
+        append(", effect ${HybridMath.formatDb(r.attenuationDb)} (${r.backendName})")
+        if (r.curveEstimated) append("\nStep sizes estimated: this output does not report its volume curve.")
+    }
+    r.message?.let { append("\n").append(it) }
 }
