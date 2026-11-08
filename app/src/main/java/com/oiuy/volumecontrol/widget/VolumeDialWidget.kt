@@ -121,6 +121,8 @@ class IncreaseVolumeAction : ActionCallback {
         parameters: ActionParameters,
     ) {
         MediaVolumeController(context).adjustByPercentStep(VolumeActions.EXTRA_PERCENT_STEP)
+        // Whole-level step: drop any in-between attenuation from the app.
+        com.oiuy.volumecontrol.effect.GlobalEffectSession.setRequestedDb(0f)
         VolumeDialWidget().update(context, glanceId)
     }
 }
@@ -132,6 +134,8 @@ class DecreaseVolumeAction : ActionCallback {
         parameters: ActionParameters,
     ) {
         MediaVolumeController(context).adjustByPercentStep(-VolumeActions.EXTRA_PERCENT_STEP)
+        // Whole-level step: drop any in-between attenuation from the app.
+        com.oiuy.volumecontrol.effect.GlobalEffectSession.setRequestedDb(0f)
         VolumeDialWidget().update(context, glanceId)
     }
 }

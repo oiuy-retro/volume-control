@@ -15,6 +15,10 @@ A Material 3 Expressive Android app with a large centered dial that changes medi
 - The center readout shows the fine fractional media volume to one decimal place (for example `47.3%`, or `47.0%` while the magnet holds), updating on every tick.
 - Crossing a tick also brings up the Android system media-volume panel (`AudioManager.FLAG_SHOW_UI`), rate-limited to about once every 120 ms so rapid ticks do not flood the panel.
 
+## Fine volume between Android levels
+
+Android media volume only has whole levels (often 15). Positions between two levels are made by setting the next level up and lowering the output with a global audio effect by the matching number of decibels, using the device's own volume curve when it reports one. This relies on the deprecated global output effect (session 0), which some devices or other apps may block or take over; the app then uses whole levels only. When the app process is closed, Android releases the effect, so the output can return to the upper level, which is up to one level louder.
+
 ## Home-screen widget
 
 The matching widget shows the current media volume percent and a dial face.

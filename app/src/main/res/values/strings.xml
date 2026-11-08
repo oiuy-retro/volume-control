@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Volume Control</string>
     <string name="widget_name">Volume Dial</string>
-    <string name="widget_description">Shows media volume percent. Tap the dial to open the app. Use +/− for 10% steps. Continuous rotation is only available in the app.</string>
+    <string name="widget_description" formatted="false">Shows media volume percent. Tap the dial to open the app. Use +/− for 10% steps. Continuous rotation is only available in the app.</string>
     <string name="volume_percent">%1$d%%</string>
     <string name="increase_volume">Increase volume by 10 percent</string>
     <string name="decrease_volume">Decrease volume by 10 percent</string>

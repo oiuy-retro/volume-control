@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.4 (Pre-release, device test)
+
+- Hybrid fine volume: the 100-tick dial (10% per turn) now fills the gaps between Android's whole media levels. For a position between levels n and n+1, the stream is set to n+1 and a global output effect (session 0; DynamicsProcessing input gain, Equalizer fallback) attenuates by (1 - fraction) times the dB difference between the two levels, so loudness moves linearly in dB from level n to n+1. The effect never boosts.
+- Level dB values come from `AudioManager.getStreamVolumeDb` for the current output device. If the route reports no usable curve (common with Bluetooth absolute volume), an even 2.5 dB-per-level estimate is used and the screen says so.
+- Between mute and level 1 the effect fades over 30 dB, limited to the backend's reported floor.
+- Write order avoids loudness spikes: attenuation is applied before the stream level goes up, and after it goes down.
+- If the effect cannot attach, the dial falls back to whole Android levels and says so under the dial.
+- Readout under the dial: Android level, applied effect dB, and backend.
+- Widget +/- steps clear any in-between attenuation.
+- Adds `MODIFY_AUDIO_SETTINGS` (install-time permission used by audio effects).
+- versionName 0.1.4, versionCode 15.
+
 ## Unreleased
 
 - Stationary bezel ticks: 100 fine marks stay fixed on the dial rim; only the knob and indicator rotate with volume.
