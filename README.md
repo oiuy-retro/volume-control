@@ -23,6 +23,27 @@ The readout separates **requested gain** from **API read-back** and shows effect
 
 Own stream changes keep the raw finger position while Android settles. The cut is force-written after a stream write, on volume broadcasts, on resume/output changes, and at four finite delayed checks (80, 250, 600, 1150 ms). There is no volume-writing observer or perpetual retry loop. Deferred downward writes retain a compensating cut until the lower index is read back. A clamped/unsettled write is reported after about a second (or finger release), without automatically retrying the stream or removing the cut. Hardware-button changes retain the cut and rebase the dial; widget +/- explicitly clears it.
 
+### Step calibration (per output)
+
+Many outputs, especially Bluetooth speakers using absolute volume, do not tell Android how loud each level is. The app then assumes 2.5 dB per level, which is usually wrong, so the in-between positions feel uneven and the rest of the real step lands as a jump. Calibration measures the real step sizes by ear.
+
+1. Play steady music on the output you want to calibrate. Set Android volume to a comfortable level (at least level 2). The app will not raise it for you.
+2. Tap **Calibrate steps for this output**. You start on **B**: the current level N+1 with a cut C. The starting cut is at least as deep as the one already playing, so starting never gets louder.
+3. Tap **Play A / Play B** to switch. A is the level below (N) with no cut. B is level N+1 with cut C.
+4. Turn the dial to change C in 0.5 dB detents (one whole-percent haptic per 0.5 dB). Clockwise means less cut. The dial stops at 0 dB and at the effect's floor.
+5. When A and B sound equally loud, tap **Save this step**. That stores the step size for N → N+1.
+6. Optionally use **Lower pair** / **Higher pair (louder)** to calibrate more pairs, then **Done**.
+
+Saved steps are kept per output (device type plus Bluetooth address or product name, and the number of Android levels). Pairs you did not calibrate use the nearest calibrated value; with one saved pair every step uses that size. The readout then says "calibrated N of 14 steps" (for 15 levels; mute to level 1 cannot be matched by ear and uses a fixed fade). **Reset this output** deletes the saved steps for the current output. Calibrated steps take priority over the curve Android reports.
+
+If B is still louder with C at the effect's floor, the real step is bigger than the effect can cut. The app says so; that step will still jump by the difference.
+
+Switching uses a safe order: A → B applies and confirms the cut before raising the level; B → A lowers the level first and removes the cut afterwards. On Bluetooth the cut is kept for about 350 ms after a lower level is read back, because the speaker may change its own volume later than the phone reports. That window is an estimate, not measured per speaker. If something else changes Android volume during calibration, calibration stops without saving.
+
+### Boundary timing
+
+When the dial crosses up into the next Android level, the deeper cut for the new level is confirmed before the level is raised, and it is kept while the level change is still pending. If Android or the speaker is slow, this can be briefly quieter, never louder. When crossing down on Bluetooth, the cut is computed as if the old, higher level were still playing for about 350 ms, then relaxed.
+
 ### Bluetooth diagnostic
 
 1. Start music on the Bluetooth speaker, at a safe Android level. Open the app and note the actual Android index.
@@ -102,7 +123,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
 - versionName: `0.1.4`
-- versionCode: `16` (planned `v0.1.4-pre.2`; not device-verified)
+- versionCode: `17` (planned `v0.1.4-pre.3`; not device-verified)
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

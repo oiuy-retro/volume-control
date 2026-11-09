@@ -319,4 +319,266 @@ class HybridControllerCoreTest {
         assertEquals(0f, r.engineGain, 0f)
     }
 
+
+    // ---------------- Calibration ----------------
+
+    private fun streams(r: Rig) = r.log.filter { it.startsWith("stream:") }
+
+    @Test fun calibrationStartsOnBAtCurrentLevelWithoutRaising() {
+        val r = Rig(7)
+        assertTrue(r.c.beginCalibration())
+        val cal = r.c.calibrationSession!!
+        assertEquals(6, cal.pair)
+        assertEquals(CalibrationSide.B, cal.side)
+        assertEquals(-2.5f, cal.cutDb, 0f)
+        assertEquals(-2.5f, r.engineGain, 0f)
+        assertTrue(streams(r).isEmpty())
+    }
+
+    @Test fun calibrationStartKeepsADeeperExistingCut() {
+        val r = Rig(7)
+        r.fxState = r.fxState.copy(requestedDb = -4.2f, confirmedDb = listOf(-4.2f, -4.2f))
+        r.c.beginCalibration()
+        assertEquals(-4.5f, r.c.calibrationSession!!.cutDb, 0f) // deeper detent, never louder
+        assertTrue(streams(r).isEmpty())
+    }
+
+    @Test fun calibrationRefusesBelowLevelTwoAndWhenEffectNotReady() {
+        val low = Rig(1)
+        assertFalse(low.c.beginCalibration())
+        assertTrue(low.c.message!!.contains("level 2"))
+        assertTrue(low.log.isEmpty())
+        val off = Rig(7)
+        off.fxState = off.fxState.copy(hasControl = false)
+        assertFalse(off.c.beginCalibration())
+        assertNull(off.c.calibrationSession)
+        assertTrue(off.log.isEmpty())
+    }
+
+    @Test fun bToALowersLevelBeforeRemovingCut() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        r.log.clear()
+        r.c.toggleCalibrationSide()
+        assertEquals("stream:6", r.log.first())
+        assertEquals("gain:0.0:true", r.log.last())
+        assertEquals(6, r.actual)
+        assertEquals(CalibrationSide.A, r.c.calibrationSession!!.side)
+    }
+
+    @Test fun aToBConfirmsCutBeforeRaisingLevel() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        r.c.toggleCalibrationSide()
+        r.log.clear()
+        r.c.toggleCalibrationSide()
+        assertEquals("gain:-2.5:true", r.log.first())
+        assertEquals("stream:7", r.log[1])
+        assertEquals(-2.5f, r.engineGain, 0f)
+    }
+
+    @Test fun aToBWithRejectedCutDoesNotRaise() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        r.c.toggleCalibrationSide()
+        r.failGain = true
+        r.log.clear()
+        r.c.toggleCalibrationSide()
+        assertTrue(streams(r).isEmpty())
+        assertEquals(6, r.actual)
+        assertEquals(CalibrationSide.A, r.c.calibrationSession!!.side)
+    }
+
+    @Test fun bluetoothBToAKeepsCutUntilLowerLevelLandsAndHoldExpires() {
+        val r = Rig(7)
+        r.c.remoteHoldMs = 350
+        r.c.beginCalibration()
+        r.deferred = true
+        r.c.toggleCalibrationSide()
+        assertEquals(-2.5f, r.engineGain, 0f) // still level 7 at the phone: cut held
+        r.time = 100
+        r.settle() // phone now at 6, but speaker may lag: hold
+        assertEquals(-2.5f, r.engineGain, 0f)
+        r.time = 400
+        r.c.onVolumeEvent()
+        assertEquals(0f, r.engineGain, 0f)
+    }
+
+    @Test fun dialAdjustsCutInHalfDbDetentsWithinFloorAndZero() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        // 36 degrees = 1% = 0.5 dB, clockwise is less cut.
+        r.c.setOutputPercent(r.c.adjustByDegrees(36f))
+        assertEquals(-2.0f, r.c.calibrationSession!!.cutDb, 0f)
+        assertEquals(-2.0f, r.engineGain, 0f)
+        r.c.setOutputPercent(r.c.adjustByDegrees(10f)) // 0.14 dB: same detent
+        assertEquals(-2.0f, r.c.calibrationSession!!.cutDb, 0f)
+        r.c.setOutputPercent(r.c.adjustByDegrees(3600f))
+        assertEquals(0f, r.c.calibrationSession!!.cutDb, 0f)
+        r.c.setOutputPercent(r.c.adjustByDegrees(-36000f))
+        assertEquals(-30f, r.c.calibrationSession!!.cutDb, 0f)
+        assertTrue(streams(r).isEmpty())
+    }
+
+    @Test fun dialOnSideAStoresCutWithoutPlayingIt() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        r.c.toggleCalibrationSide()
+        r.log.clear()
+        r.c.setOutputPercent(r.c.adjustByDegrees(-180f))
+        assertEquals(-5.0f, r.c.calibrationSession!!.cutDb, 0f)
+        assertTrue(r.log.isEmpty())
+        assertEquals(0f, r.engineGain, 0f)
+    }
+
+    @Test fun saveStoresStepAndCurveBecomesCalibrated() {
+        val r = Rig(7)
+        var saved: StepCalibration? = null
+        r.c.onCalibrationChanged = { saved = it }
+        r.c.beginCalibration()
+        r.c.setOutputPercent(r.c.adjustByDegrees(-252f)) // -3.5 dB more
+        assertTrue(r.c.saveCalibrationStep())
+        assertEquals(6f, saved!!.steps[6]!!, 0f)
+        assertEquals(CurveSource.CALIBRATED, r.c.curveSource)
+        assertFalse(r.c.curveEstimated)
+        assertEquals(6f, r.c.curve[7] - r.c.curve[6], 1e-4f)
+        assertEquals(6f, r.c.curve[12] - r.c.curve[11], 1e-4f) // uniform from the single pair
+    }
+
+    @Test fun saveAtBackendFloorWarnsAndZeroIsRefused() {
+        val r = Rig(7)
+        r.fxState = r.fxState.copy(floorDb = -6f)
+        r.c.beginCalibration()
+        r.c.setOutputPercent(r.c.adjustByDegrees(-3600f))
+        assertTrue(r.c.saveCalibrationStep())
+        assertTrue(r.c.message!!.contains("backend floor"))
+        r.c.setOutputPercent(r.c.adjustByDegrees(3600f))
+        assertFalse(r.c.saveCalibrationStep())
+        assertEquals(1, r.c.calibration.calibratedCount)
+    }
+
+    @Test fun severalPairsAndReset() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        r.c.setOutputPercent(r.c.adjustByDegrees(-252f)) // 6 dB for 6->7
+        r.c.saveCalibrationStep()
+        r.c.stepCalibrationPair(-1)
+        assertEquals(5, r.c.calibrationSession!!.pair)
+        r.c.setOutputPercent(r.c.adjustByDegrees(-108f)) // initial 6 (saved neighbour fill) -> 7.5
+        r.c.saveCalibrationStep()
+        assertEquals(2, r.c.calibration.calibratedCount)
+        assertEquals(7.5f, r.c.curve[6] - r.c.curve[5], 1e-4f)
+        assertEquals(6f, r.c.curve[7] - r.c.curve[6], 1e-4f)
+        var cleared = false
+        r.c.onCalibrationChanged = { cleared = it.steps.isEmpty() }
+        r.c.resetCalibration()
+        assertTrue(cleared)
+        assertEquals(CurveSource.ESTIMATED, r.c.curveSource)
+    }
+
+    @Test fun lowerPairLowersLevelFirstAndHoldsDeeperCut() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        r.deferred = true
+        r.log.clear()
+        r.c.stepCalibrationPair(-1)
+        assertEquals("stream:6", r.log.first())
+        assertEquals(-2.5f, r.engineGain, 0f)
+        r.settle()
+        assertEquals(6, r.actual)
+        assertEquals(r.c.calibrationSession!!.cutDb, r.engineGain, 0f)
+    }
+
+    @Test fun higherPairAppliesCutBeforeRaising() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        r.log.clear()
+        r.c.stepCalibrationPair(1)
+        assertTrue(r.log.first().startsWith("gain:-2.5"))
+        assertEquals("stream:8", r.log[1])
+        assertEquals(7, r.c.calibrationSession!!.pair)
+    }
+
+    @Test fun externalLevelChangeStopsCalibrationWithoutSaving() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        r.actual = 9
+        r.c.onVolumeEvent()
+        assertNull(r.c.calibrationSession)
+        assertTrue(r.c.message!!.contains("outside calibration"))
+        assertEquals(0, r.c.calibration.calibratedCount)
+    }
+
+    @Test fun endingCalibrationKeepsLoudnessAndDoesNotWriteStream() {
+        val r = Rig(7)
+        r.c.beginCalibration()
+        r.log.clear()
+        r.c.endCalibration()
+        assertNull(r.c.calibrationSession)
+        assertTrue(r.log.isEmpty())
+        assertEquals(6f, r.c.rawLevel, 0.001f) // 7 with -2.5 dB = level 6 on the estimate
+    }
+
+    @Test fun calibratedStepIsUsedForGapFill() {
+        val r = Rig(7)
+        r.c.setCalibration(StepCalibration(15).with(7, 6f), null)
+        r.level(7.5f)
+        assertEquals(8, r.actual)
+        assertEquals(-3f, r.engineGain, 0.001f)
+    }
+
+    // ---------------- Boundary timing ----------------
+
+    @Test fun deferredUpwardCrossingNeverDropsTheTargetCut() {
+        val r = Rig(7)
+        r.deferred = true
+        r.level(7.2f) // target 8 with -2.0
+        val firstGain = r.log.first()
+        assertTrue(firstGain.startsWith("gain:-2.0"))
+        assertEquals("stream:8", r.log[1])
+        val sent = mutableListOf<Float>()
+        repeat(5) { i ->
+            r.time = 80L * (i + 1)
+            r.engineGain = 0f
+            r.c.onVolumeEvent()
+            sent += r.engineGain
+        }
+        assertTrue(sent.all { it <= -2.0f + 1e-4f })
+        r.settle()
+        assertEquals(-2.0f, r.engineGain, 1e-4f)
+    }
+
+    @Test fun bluetoothDownwardCrossingCompensatesDuringHoldThenReleases() {
+        val r = Rig(8)
+        r.c.remoteHoldMs = 350
+        r.level(7.6f) // still plans level 8 (cut only)
+        r.log.clear()
+        r.level(6.88f) // plans level 7 with -0.3 dB
+        assertEquals(7, r.actual) // phone read-back already lower
+        assertTrue(r.engineGain <= -2.7f) // compensates for the speaker possibly still at 8
+        r.time = 200
+        r.c.onVolumeEvent()
+        assertTrue(r.engineGain <= -2.7f)
+        r.time = 400
+        r.c.onVolumeEvent()
+        assertEquals(-0.3f, r.engineGain, 0.051f)
+    }
+
+    @Test fun speakerDownwardCrossingHasNoHold() {
+        val r = Rig(8)
+        r.level(6.88f)
+        assertEquals(7, r.actual)
+        assertEquals(-0.3f, r.engineGain, 0.051f)
+    }
+
+    @Test fun rapidDownwardWritesHoldTheHighestRecentLevel() {
+        val r = Rig(9)
+        r.c.remoteHoldMs = 350
+        r.level(7.9f)
+        r.time = 50
+        r.level(6.95f)
+        assertEquals(7, r.actual)
+        assertTrue(r.engineGain <= -5f) // compensates from 9, the highest level within the hold
+    }
+
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4-pre.3 (device verification pending)
+
+- Per-output step calibration. Calibrate mode compares A (level N, no cut) with B (level N+1, cut C). The dial sets C in 0.5 dB detents; Save stores |C| as that step's size. Several pairs can be saved; others are filled from the nearest saved pair (uniform if only one). Stored in app preferences per output (device type plus address or product name, plus level count). Reset clears the current output.
+- The gap fill uses calibrated steps first, then the curve Android reports, then the 2.5 dB estimate. The readout says which: "calibrated N of 14 steps", reported, or estimated.
+- Calibration starts at the current level with a cut at least as deep as the current one, so it never starts louder. A → B confirms the cut before raising; B → A lowers first. A step larger than the effect's floor is reported as such.
+- Bluetooth boundary timing: after a lower level is read back, the cut keeps compensating for the old level for about 350 ms (an estimate of speaker latency), with an extra settlement check at 400 ms. Pending upward writes keep the deeper target cut (briefly quieter at worst, never louder). Covered by new tests.
+- versionCode 17.
+
 ## 0.1.4-pre.2 (local follow-up; device verification pending)
 
 - Fix integration bookkeeping: preserve raw finger position through own asynchronous stream writes and observers; read back the actual Android index; apply only the final magnet output once per finger event.

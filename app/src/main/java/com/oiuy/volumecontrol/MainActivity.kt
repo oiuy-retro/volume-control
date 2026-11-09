@@ -41,6 +41,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import com.oiuy.volumecontrol.effect.GainMath
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.Composable
+import com.oiuy.volumecontrol.hybrid.CalibrationSession
+import com.oiuy.volumecontrol.hybrid.CalibrationSide
+import com.oiuy.volumecontrol.hybrid.CurveSource
+import com.oiuy.volumecontrol.hybrid.HybridReadout
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,6 +109,7 @@ class MainActivity : ComponentActivity() {
                         VolumeDial(
                             percent = percent,
                             enabled = !readout.diagnostic,
+                            centerLabel = readout.calibration?.let { "C " + GainMath.formatDb(it.cutDb) },
                             onRotateDegrees = { degrees ->
                                 // Always advance the raw accumulator from finger deltas.
                                 controller.adjustByDegrees(degrees)
@@ -131,23 +139,31 @@ class MainActivity : ComponentActivity() {
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 24.dp),
                         )
-                        TextButton(onClick = { controller.reattach() }) {
-                            Text("Enable / reattach effect (cut may briefly release)")
-                        }
-                        if (!readout.diagnostic) {
-                            Button(onClick = { controller.beginDiagnostic() }) {
-                                Text("Test effect at fixed Android level: −12 dB")
-                            }
+                        val cal = readout.calibration
+                        if (cal != null) {
+                            CalibrationPanel(readout, cal, controller)
                         } else {
-                            Text("TEST MODE: dial locked. App does not change Android level. " +
-                                "Compare the same playing audio; hardware buttons still work.",
-                                modifier = Modifier.padding(horizontal = 24.dp))
-                            Button(onClick = { controller.toggleDiagnosticCut() }) {
-                                Text(if (GlobalEffectSession.state.requestedDb < -0.05f)
-                                    "Test 0 dB (louder)" else "Test −12 dB (or backend floor)")
+                            TextButton(onClick = { controller.reattach() }) {
+                                Text("Enable / reattach effect (cut may briefly release)")
                             }
-                            TextButton(onClick = { controller.endDiagnostic() }) {
-                                Text("End test (keep current cut)")
+                            if (!readout.diagnostic) {
+                                Button(onClick = { controller.beginCalibration() }) {
+                                    Text("Calibrate steps for this output")
+                                }
+                                Button(onClick = { controller.beginDiagnostic() }) {
+                                    Text("Test effect at fixed Android level: \u221212 dB")
+                                }
+                            } else {
+                                Text("TEST MODE: dial locked. App does not change Android level. " +
+                                    "Compare the same playing audio; hardware buttons still work.",
+                                    modifier = Modifier.padding(horizontal = 24.dp))
+                                Button(onClick = { controller.toggleDiagnosticCut() }) {
+                                    Text(if (GlobalEffectSession.state.requestedDb < -0.05f)
+                                        "Test 0 dB (louder)" else "Test \u221212 dB (or backend floor)")
+                                }
+                                TextButton(onClick = { controller.endDiagnostic() }) {
+                                    Text("End test (keep current cut)")
+                                }
                             }
                         }
                       }
@@ -158,7 +174,54 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-internal fun readoutText(r: com.oiuy.volumecontrol.hybrid.HybridReadout): String = buildString {
+@Composable
+private fun CalibrationPanel(r: HybridReadout, cal: CalibrationSession, controller: HybridVolumeController) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(horizontal = 24.dp),
+    ) {
+        Text(calibrationText(r, cal), textAlign = TextAlign.Center)
+        Button(onClick = { controller.toggleCalibrationSide() }) {
+            Text(if (cal.side == CalibrationSide.A) "Play B (level ${cal.pair + 1} with cut)"
+                else "Play A (level ${cal.pair}, no cut)")
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { controller.stepCalibrationPair(-1) }, enabled = cal.pair > 1) {
+                Text("Lower pair")
+            }
+            OutlinedButton(onClick = { controller.stepCalibrationPair(1) }, enabled = cal.pair < r.maxIndex - 1) {
+                Text("Higher pair (louder)")
+            }
+        }
+        Button(onClick = { controller.saveCalibrationStep() }) { Text("Save this step") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { controller.resetCalibration() }) { Text("Reset this output") }
+            TextButton(onClick = { controller.endCalibration() }) { Text("Done") }
+        }
+    }
+}
+
+internal fun calibrationText(r: HybridReadout, cal: CalibrationSession): String = buildString {
+    append("CALIBRATING ${r.outputName.ifBlank { "this output" }}: level ${cal.pair} \u2192 ${cal.pair + 1}\n")
+    append("A = level ${cal.pair}, no cut. B = level ${cal.pair + 1} with cut C.\n")
+    append("Now playing: ${cal.side}. Turn the dial to change C (0.5 dB detents) until A and B sound equally loud, then Save.\n")
+    append("C = ${GainMath.formatDb(cal.cutDb)} (limit ${GainMath.formatDb(r.floorDb)})")
+    if (cal.cutDb <= r.floorDb + 0.01f) {
+        append("\nC is at the backend floor. If B is still louder, this step is bigger than the effect can cut; it will still jump.")
+    }
+    r.savedStepForPair?.let { append("\nSaved for this pair: ${"%.1f".format(it)} dB") }
+}
+
+internal fun curveText(r: HybridReadout): String = when (r.curveSource) {
+    CurveSource.CALIBRATED -> "Step sizes: calibrated ${r.calibratedSteps} of ${r.calibratablePairs} steps" +
+        (if (r.calibratedSteps < r.calibratablePairs) " (others filled from nearest calibrated step)" else "") +
+        ". Mute \u2192 level 1 uses a fixed fade."
+    CurveSource.MEASURED -> "Step sizes: reported by Android for this output."
+    CurveSource.ESTIMATED -> "Step sizes estimated: this output does not report its volume curve (2.5 dB per step assumed). Calibrate for even steps."
+}
+
+internal fun readoutText(r: HybridReadout): String = buildString {
     val s = r.effect
     append("Android level ${r.streamIndex} of ${r.maxIndex}")
     append("\n${s.backend?.shortName ?: "No effect"}: requested ${GainMath.formatDb(s.requestedDb)}")
@@ -168,7 +231,7 @@ internal fun readoutText(r: com.oiuy.volumecontrol.hybrid.HybridReadout): String
     val confirmed = s.active && s.enabledReported && s.hasControl && s.confirmedMatchesRequest
     append(if (confirmed) "\nAPI matches request — not proof of audible application." else
         "\nFine control NOT confirmed; whole levels or held volume only.")
-    if (r.curveEstimated) append("\nStep sizes estimated: this output does not report its volume curve.")
+    append("\n").append(curveText(r))
     r.message?.let { append("\n").append(it) }
     s.message?.let { append("\n").append(it) }
     if (s.active && !s.confirmedMatchesRequest) append("\nAPI read-back does not match requested gain.")

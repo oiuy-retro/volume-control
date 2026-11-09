@@ -55,6 +55,8 @@ import kotlin.math.sin
 fun VolumeDial(
     percent: Float,
     enabled: Boolean = true,
+    /** Replaces the percent text in the center (used by step calibration). */
+    centerLabel: String? = null,
     /** Apply rotation to the raw accumulator; must return the new **raw** percent. */
     onRotateDegrees: (Float) -> Float,
     /**
@@ -105,7 +107,7 @@ fun VolumeDial(
             .fillMaxWidth()
             .aspectRatio(1f)
             .padding(24.dp)
-            .semantics { contentDescription = "Volume dial, $displayPercent percent" },
+            .semantics { contentDescription = centerLabel?.let { "Calibration dial, $it" } ?: "Volume dial, $displayPercent percent" },
         contentAlignment = Alignment.Center,
     ) {
         Canvas(
@@ -268,7 +270,7 @@ fun VolumeDial(
         }
 
         Text(
-            text = "$displayPercent%",
+            text = centerLabel ?: "$displayPercent%",
             style = MaterialTheme.typography.displayLarge.copy(
                 fontWeight = FontWeight.Bold,
                 fontSize = 56.sp,

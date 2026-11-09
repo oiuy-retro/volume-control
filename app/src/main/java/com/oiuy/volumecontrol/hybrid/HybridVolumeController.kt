@@ -23,6 +23,13 @@ data class HybridReadout(
     val curveEstimated: Boolean,
     val diagnostic: Boolean,
     val message: String?,
+    val curveSource: CurveSource = if (curveEstimated) CurveSource.ESTIMATED else CurveSource.MEASURED,
+    val calibratedSteps: Int = 0,
+    val calibratablePairs: Int = (maxIndex - 1).coerceAtLeast(0),
+    val calibration: CalibrationSession? = null,
+    val outputName: String = "",
+    val floorDb: Float = effect.floorDb,
+    val savedStepForPair: Float? = null,
 )
 
 /** Android plumbing; all coordinator decisions are exercised by fake-port unit tests. */
@@ -50,8 +57,11 @@ class HybridVolumeController(context: Context) {
         },
         nowMs = SystemClock::uptimeMillis,
     )
+    private val prefs = appContext.getSharedPreferences("step_calibration", Context.MODE_PRIVATE)
+    private var calibrationKey = ""
     private var routeKey = ""
-    private val settlementChecks = listOf(80L, 250L, 600L, 1150L).map {
+    // 400 ms covers the Bluetooth remote-volume hold before its cut is released.
+    private val settlementChecks = listOf(80L, 250L, 400L, 600L, 1150L).map {
         it to Runnable {
             checkRoute()
             core.onVolumeEvent(forceReapply = false)
@@ -83,6 +93,11 @@ class HybridVolumeController(context: Context) {
         started = true
         if (!GlobalEffectSession.state.active) GlobalEffectSession.enable()
         routeKey = outputRouteKey()
+        core.onCalibrationChanged = { cal ->
+            if (cal.steps.isEmpty()) prefs.edit().remove(calibrationKey).apply()
+            else prefs.edit().putString(calibrationKey, cal.serialize()).apply()
+        }
+        loadOutputSettings()
         core.initialize(measuredCurve())
         audioManager.registerAudioDeviceCallback(deviceCallback, handler)
         val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
@@ -142,6 +157,30 @@ class HybridVolumeController(context: Context) {
     fun toggleDiagnosticCut() { core.toggleDiagnosticCut(); onChanged() }
     fun endDiagnostic() { core.endDiagnostic(); onChanged() }
 
+    fun beginCalibration() { core.beginCalibration(); scheduleSettlement(); onChanged() }
+    fun toggleCalibrationSide() { core.toggleCalibrationSide(); scheduleSettlement(); onChanged() }
+    fun stepCalibrationPair(delta: Int) { core.stepCalibrationPair(delta); scheduleSettlement(); onChanged() }
+    fun saveCalibrationStep() { core.saveCalibrationStep(); onChanged() }
+    fun resetCalibration() { core.resetCalibration(); onChanged() }
+    fun endCalibration() { core.endCalibration(); onChanged() }
+
+    /** Calibration and remote-volume hold for the current output. */
+    private fun loadOutputSettings() {
+        val out = currentOutput()
+        calibrationKey = StepCalibration.key(
+            out?.type ?: AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+            if (Build.VERSION.SDK_INT >= 28) out?.address else null,
+            out?.productName?.toString(),
+            maxVolume,
+        )
+        core.setCalibration(StepCalibration.parse(maxVolume, prefs.getString(calibrationKey, null)), measuredCurve())
+        core.remoteHoldMs = if (out != null && isRemoteVolume(out.type)) HybridControllerCore.BLUETOOTH_HOLD_MS else 0L
+    }
+
+    private fun isRemoteVolume(type: Int): Boolean = type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+        (Build.VERSION.SDK_INT >= 28 && type == AudioDeviceInfo.TYPE_HEARING_AID) ||
+        (Build.VERSION.SDK_INT >= 31 && (type == AudioDeviceInfo.TYPE_BLE_HEADSET || type == AudioDeviceInfo.TYPE_BLE_SPEAKER))
+
     fun readout() = HybridReadout(
         streamIndex = currentVolume,
         maxIndex = maxVolume,
@@ -149,9 +188,15 @@ class HybridVolumeController(context: Context) {
         curveEstimated = core.curveEstimated,
         diagnostic = core.diagnostic,
         message = core.message,
+        curveSource = core.curveSource,
+        calibratedSteps = core.calibration.calibratedCount,
+        calibratablePairs = core.calibration.calibratablePairs,
+        calibration = core.calibrationSession,
+        outputName = currentOutput()?.productName?.toString().orEmpty(),
+        savedStepForPair = core.calibrationSession?.let { core.calibration.steps[it.pair] },
     )
 
-    fun reloadCurve() = core.updateCurve(measuredCurve())
+    fun reloadCurve() = loadOutputSettings()
     // currentOutput uses output-device APIs only; unsupported sink types fall back to estimates.
     @SuppressLint("WrongConstant")
     private fun measuredCurve(): FloatArray? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -170,6 +215,8 @@ class HybridVolumeController(context: Context) {
         val key = outputRouteKey()
         if (key == routeKey) return
         routeKey = key
+        if (core.calibrationSession != null) core.endCalibration()
+        loadOutputSettings()
         core.onRouteChanged(measuredCurve())
         scheduleSettlement()
         onChanged()
