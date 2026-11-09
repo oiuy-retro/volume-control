@@ -1,13 +1,23 @@
 # Changelog
 
+## 0.1.4-pre.2 (local follow-up; device verification pending)
+
+- Fix integration bookkeeping: preserve raw finger position through own asynchronous stream writes and observers; read back the actual Android index; apply only the final magnet output once per finger event.
+- Force the gain request past the cache after stream writes and in bounded settlement checks, volume broadcasts, resume and output changes. This addresses a possible vendor parameter reset, not a proven Bluetooth root cause. Observers never write stream volume; unchanged generic settings notifications cannot create a gain-write loop.
+- Require enabled/control/matching API confirmation before increasing to an upper stream step. Distinguish requested gain from API read-back; expose errors, backend attempts and unavailable/held-volume states. No claim of acoustic verification.
+- Keep a compensating cut during deferred downward writes. Report clamped/unsettled writes without endless retries or automatically releasing the cut. Route changes refresh the curve and reassert the cut without restoring an old route's stream index.
+- Add explicit enable/reattach and fixed-Android-level 0/−12 dB diagnostic (backend-floor clamped), with a locked dial and visible test mode. Exit retains the cut; reattach/process death can release it and increase loudness.
+- Remove per-tick ADJUST_SAME / system volume UI calls; retain dial/haptic/magnet math.
+- Add fake volume/effect coordinator and readout regressions: 110 unit tests pass; debug assembly and lint pass (0 errors, 21 warnings). VersionName 0.1.4, versionCode 16. No release or device verification yet.
+
 ## 0.1.4 (Pre-release, device test)
 
-- Hybrid fine volume: the 100-tick dial (10% per turn) now fills the gaps between Android's whole media levels. For a position between levels n and n+1, the stream is set to n+1 and a global output effect (session 0; DynamicsProcessing input gain, Equalizer fallback) attenuates by (1 - fraction) times the dB difference between the two levels, so loudness moves linearly in dB from level n to n+1. The effect never boosts.
+- Hybrid fine volume: the 100-tick dial (10% per turn) requests cuts intended to fill the gaps between Android's whole media levels. For a position between levels n and n+1, the stream is set to n+1 and a global output effect (session 0; DynamicsProcessing input gain, Equalizer fallback) attenuates by (1 - fraction) times the dB difference between the two levels, so requested loudness moves linearly in dB from level n to n+1. The effect never boosts.
 - Level dB values come from `AudioManager.getStreamVolumeDb` for the current output device. If the route reports no usable curve (common with Bluetooth absolute volume), an even 2.5 dB-per-level estimate is used and the screen says so.
 - Between mute and level 1 the effect fades over 30 dB, limited to the backend's reported floor.
-- Write order avoids loudness spikes: attenuation is applied before the stream level goes up, and after it goes down.
+- Initial write ordering applied attenuation before the stream level went up and after it went down; asynchronous vendor updates were not verified.
 - If the effect cannot attach, the dial falls back to whole Android levels and says so under the dial.
-- Readout under the dial: Android level, applied effect dB, and backend.
+- Initial readout showed Android level, requested effect dB (incorrectly described as applied), and backend; pre.2 separates API confirmation.
 - Widget +/- steps clear any in-between attenuation.
 - Adds `MODIFY_AUDIO_SETTINGS` (install-time permission used by audio effects).
 - versionName 0.1.4, versionCode 15.

@@ -13,11 +13,28 @@ A Material 3 Expressive Android app with a large centered dial that changes medi
 - Tick crossings are counted from the fine percent (0.1% steps). Finger deltas always update a continuous raw percent. A tiny magnet (±0.1% of each whole percent) may overlay the reported value when raw ends in that zone or a fast frame sweeps across the mark (no finger-speed gate). After snapping once, the magnet will not re-engage until raw moves 0.5% (5 fine ticks) away from that whole.
 - Fine tick haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) plus a light 5 ms / amplitude 65 vibrator one-shot. Whole-percent majors use `LONG_PRESS` plus a 28 ms / amplitude 255 one-shot. At most one pulse per input frame. Fines are rate-limited (~12 ms) and are suppressed for 28 ms after a major so they cannot cut the major short; a major is not dropped because a fine fired recently. Major haptic fires when entering or crossing a major tick (including multi-tick jumps). The app requests the `VIBRATE` permission for this.
 - The center readout shows the fine fractional media volume to one decimal place (for example `47.3%`, or `47.0%` while the magnet holds), updating on every tick.
-- Crossing a tick also brings up the Android system media-volume panel (`AudioManager.FLAG_SHOW_UI`), rate-limited to about once every 120 ms so rapid ticks do not flood the panel.
+- The app shows the real Android level under the dial. It no longer calls the system-volume UI on every tick, avoiding another vendor volume-update path. Haptics and magnet behavior are unchanged.
 
 ## Fine volume between Android levels
 
-Android media volume only has whole levels (often 15). Positions between two levels are made by setting the next level up and lowering the output with a global audio effect by the matching number of decibels, using the device's own volume curve when it reports one. This relies on the deprecated global output effect (session 0), which some devices or other apps may block or take over; the app then uses whole levels only. When the app process is closed, Android releases the effect, so the output can return to the upper level, which is up to one level louder.
+Android media volume only has whole levels (often 15). The hybrid mode requests positions between two levels by setting the next level up and asking a global audio effect to attenuate by the matching number of decibels. It uses the device volume curve when usable; otherwise it uses an explicitly labeled 2.5 dB-per-step estimate. This is an experiment, not a guarantee of smooth audible output, especially over Bluetooth.
+
+The readout separates **requested gain** from **API read-back** and shows effect attachment, enabled state, control, errors, and backend attempts. Matching API values prove only that the API accepted the parameter, not that audio on the current route passed through the effect. If an effect is unavailable, disabled, or not controlled, dial changes use whole Android levels; if a cut fails confirmation, an upward change to the upper level is held rather than made without its cut.
+
+Own stream changes keep the raw finger position while Android settles. The cut is force-written after a stream write, on volume broadcasts, on resume/output changes, and at four finite delayed checks (80, 250, 600, 1150 ms). There is no volume-writing observer or perpetual retry loop. Deferred downward writes retain a compensating cut until the lower index is read back. A clamped/unsettled write is reported after about a second (or finger release), without automatically retrying the stream or removing the cut. Hardware-button changes retain the cut and rebase the dial; widget +/- explicitly clears it.
+
+### Bluetooth diagnostic
+
+1. Start music on the Bluetooth speaker, at a safe Android level. Open the app and note the actual Android index.
+2. If needed, tap **Enable / reattach effect** while that route is playing. Reattaching releases the old cut briefly and can make sound louder; it does not change the Android index.
+3. Tap **Test effect at fixed Android level: −12 dB**. The dial locks and the app stops all stream writes. Hardware buttons and other apps can still change the level.
+4. Toggle **Test 0 dB (louder)** and **Test −12 dB**. The negative test is clamped to the backend floor. Compare the same playing audio and check requested versus API read-back, enabled/control state and errors.
+5. If both API values change but the sound does not, the global effect is not audibly reaching that route; fine-volume math alone cannot fix that. Send the diagnostic text and route/player details. This does not prove which vendor/offload/Bluetooth path bypassed it.
+6. **End test** retains the last cut to avoid an automatic 12 dB rise. Turning the dial resumes hybrid control.
+
+Session 0 is deprecated and vendor-dependent. Another app may take control. API confirmation cannot detect an audio route bypassing the effect. Automatic route detection uses available output callbacks and route checks on volume events/resume; older Android versions expose connected devices rather than the exact media route. Manual reattach may be needed after changing outputs or starting a player.
+
+If the process dies, Android releases the cut. Normal hybrid output can return to the upper level (usually up to one step louder); after the diagnostic or a retained deep cut the rise may be much larger, up to the current cut. Stream/effect writes are not atomic, so brief vendor transients cannot be ruled out. Do not test at an unsafe volume.
 
 ## Home-screen widget
 
@@ -70,8 +87,7 @@ Requirements:
 export JAVA_HOME=/path/to/jdk-21
 export PATH="$JAVA_HOME/bin:$PATH"
 echo "sdk.dir=/path/to/android/sdk" > local.properties
-./gradlew :app:assembleDebug
-./gradlew :app:testDebugUnitTest
+./gradlew --no-configuration-cache :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 
 See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project build box and for release signing.
@@ -85,8 +101,8 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 ## Package
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
-- versionName: `0.1.1`
-- versionCode: `4`
+- versionName: `0.1.4`
+- versionCode: `16` (planned `v0.1.4-pre.2`; not device-verified)
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

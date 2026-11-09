@@ -167,7 +167,9 @@ class EffectControllerTest {
         dp.control = true
         dp.listener!!(true)
         assertTrue(c.state.hasControl)
-        assertNull(c.state.message)
+        assertNull(c.state.confirmedDb)
+        assertTrue(c.state.message!!.contains("reconfirmation"))
+        assertTrue(c.setRequestedDb(0f).confirmedMatchesRequest)
     }
 
     @Test
@@ -339,4 +341,30 @@ class EffectControllerTest {
             DynamicsConfigPlan.POST_EQ_IN_USE || DynamicsConfigPlan.LIMITER_IN_USE)
         assertEquals(2, DynamicsConfigPlan.CHANNELS)
     }
+    @Test
+    fun forcedSameRequestBypassesCacheAfterVendorVolumeReset() {
+        val dp = FakeBackend(BackendKind.DYNAMICS_PROCESSING)
+        val c = controller(34, { dp }, { error("unused") })
+        c.enable()
+        c.setRequestedDb(-2f)
+        val count = dp.applied.size
+        c.setRequestedDb(-2f)
+        assertEquals(count, dp.applied.size)
+        c.setRequestedDb(-2f, force = true)
+        assertEquals(count + 1, dp.applied.size)
+        assertTrue(c.state.confirmedMatchesRequest)
+    }
+
+    @Test
+    fun forcedRequestDetectsDisabledEngine() {
+        val dp = FakeBackend(BackendKind.DYNAMICS_PROCESSING)
+        val c = controller(34, { dp }, { error("unused") })
+        c.enable()
+        c.setRequestedDb(-2f)
+        dp.enabled = false
+        val s = c.setRequestedDb(-2f, force = true)
+        assertFalse(s.enabledReported)
+        assertTrue(s.message!!.contains("disabled"))
+    }
+
 }

@@ -220,18 +220,23 @@ class EffectController(
         return state
     }
 
-    fun setRequestedDb(db: Float): EffectState {
+    fun setRequestedDb(db: Float, force: Boolean = false): EffectState {
         val b = backend ?: return state
         val s = state
         val target = GainMath.clampAttenuation(db, s.floorDb)
-        if (target == s.requestedDb && s.confirmedDb != null) return s
+        if (!force && target == s.requestedDb && s.confirmedMatchesRequest &&
+            s.enabledReported && s.hasControl) return s
         state = try {
             val confirmed = b.apply(target)
-            s.copy(requestedDb = target, confirmedDb = confirmed, hasControl = safeHasControl(b), message = null)
+            val has = safeHasControl(b)
+            val enabled = b.isEnabled()
+            s.copy(requestedDb = target, confirmedDb = confirmed, enabledReported = enabled,
+                hasControl = has, message = if (!has) CONTROL_LOST else if (!enabled) "Effect is disabled." else null)
         } catch (e: RuntimeException) {
             s.copy(
                 requestedDb = target,
                 confirmedDb = null,
+                enabledReported = runCatching { b.isEnabled() }.getOrDefault(false),
                 hasControl = safeHasControl(b),
                 message = "Effect API rejected the setting: ${failureText(b.kind, e)}",
             )
@@ -285,7 +290,9 @@ class EffectController(
 
     private fun onControlChanged(has: Boolean) {
         if (backend == null) return
-        state = state.copy(hasControl = has, message = if (has) null else CONTROL_LOST)
+        // A cached read-back is not proof that our gain survived losing control.
+        state = state.copy(hasControl = has, confirmedDb = null,
+            message = if (has) "Control restored; gain needs reconfirmation." else CONTROL_LOST)
     }
 
     private fun failureText(kind: BackendKind, e: RuntimeException): String =

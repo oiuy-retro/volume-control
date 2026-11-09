@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.oiuy.volumecontrol.ui.VolumeControlTheme
 import com.oiuy.volumecontrol.ui.VolumeDial
-import com.oiuy.volumecontrol.hybrid.HybridMath
 import com.oiuy.volumecontrol.hybrid.HybridVolumeController
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,7 +36,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.oiuy.volumecontrol.widget.VolumeDialWidgetReceiver
-import java.util.concurrent.atomic.AtomicBoolean
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import com.oiuy.volumecontrol.effect.GainMath
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,25 +53,24 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     val context = LocalContext.current
-                    val controller = remember { HybridVolumeController(context).also { it.start() } }
+                    val controller = remember { HybridVolumeController(context) }
                     var percent by remember { mutableFloatStateOf(controller.fractionalPercent()) }
                     var readout by remember { mutableStateOf(controller.readout()) }
                     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-                        GlobalEffectSession.refresh()
-                        controller.reloadCurve()
-                        controller.syncFromSystem()
+                        controller.onResume()
                         percent = controller.fractionalPercent()
                         readout = controller.readout()
                     }
-                    val dragging = remember { AtomicBoolean(false) }
 
-                    DisposableEffect(Unit) {
+                    DisposableEffect(controller) {
+                        controller.onChanged = {
+                            percent = controller.fractionalPercent()
+                            readout = controller.readout()
+                        }
+                        controller.start()
+                        readout = controller.readout()
                         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
                             override fun onChange(selfChange: Boolean, uri: Uri?) {
-                                // Do not syncFromSystem while the user is dragging the dial.
-                                // Our own setStreamVolume would otherwise reset the fine
-                                // fractional level and freeze / jump the dial.
-                                if (dragging.get()) return
                                 controller.syncFromSystem()
                                 percent = controller.fractionalPercent()
                                 readout = controller.readout()
@@ -82,6 +84,7 @@ class MainActivity : ComponentActivity() {
                         )
                         onDispose {
                             contentResolver.unregisterContentObserver(observer)
+                            controller.stop()
                         }
                     }
 
@@ -92,33 +95,29 @@ class MainActivity : ComponentActivity() {
                         contentAlignment = Alignment.Center,
                     ) {
                       Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                       ) {
                         VolumeDial(
                             percent = percent,
+                            enabled = !readout.diagnostic,
                             onRotateDegrees = { degrees ->
                                 // Always advance the raw accumulator from finger deltas.
                                 controller.adjustByDegrees(degrees)
                             },
                             onReportedPercent = { reported ->
-                                val raw = controller.fractionalPercent()
-                                if (kotlin.math.abs(reported - raw) > 1e-4f) {
-                                    // Magnet overlay: STREAM_MUSIC follows snapped value;
-                                    // raw fractionalLevel is preserved for the next delta.
-                                    controller.setOutputPercent(reported)
-                                }
+                                // One output write per finger event, after magnet resolution.
+                                // The raw accumulator is never rebuilt from this overlay.
+                                controller.setOutputPercent(reported)
                                 percent = reported
                                 readout = controller.readout()
                             },
                             currentRawPercent = { controller.fractionalPercent() },
-                            onTickCrossed = {
-                                controller.showSystemVolumeUi()
-                            },
-                            onDragStart = { dragging.set(true) },
+                            onDragStart = { controller.beginDrag() },
                             onDragEnd = {
-                                dragging.set(false)
-                                // Ensure stream matches raw when the gesture ends.
+                                controller.endDrag()
+                                // The final snapped output is retained; only the display follows raw.
                                 percent = controller.fractionalPercent()
                                 // Widget refresh once per gesture, not every drag pixel.
                                 readout = controller.readout()
@@ -126,12 +125,31 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                         Text(
-                            text = readoutText(readout),
+                            text = readoutText(readout.copy(effect = GlobalEffectSession.state)),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 24.dp),
                         )
+                        TextButton(onClick = { controller.reattach() }) {
+                            Text("Enable / reattach effect (cut may briefly release)")
+                        }
+                        if (!readout.diagnostic) {
+                            Button(onClick = { controller.beginDiagnostic() }) {
+                                Text("Test effect at fixed Android level: −12 dB")
+                            }
+                        } else {
+                            Text("TEST MODE: dial locked. App does not change Android level. " +
+                                "Compare the same playing audio; hardware buttons still work.",
+                                modifier = Modifier.padding(horizontal = 24.dp))
+                            Button(onClick = { controller.toggleDiagnosticCut() }) {
+                                Text(if (GlobalEffectSession.state.requestedDb < -0.05f)
+                                    "Test 0 dB (louder)" else "Test −12 dB (or backend floor)")
+                            }
+                            TextButton(onClick = { controller.endDiagnostic() }) {
+                                Text("End test (keep current cut)")
+                            }
+                        }
                       }
                     }
                 }
@@ -141,10 +159,18 @@ class MainActivity : ComponentActivity() {
 }
 
 internal fun readoutText(r: com.oiuy.volumecontrol.hybrid.HybridReadout): String = buildString {
+    val s = r.effect
     append("Android level ${r.streamIndex} of ${r.maxIndex}")
-    if (r.backendName != null) {
-        append(", effect ${HybridMath.formatDb(r.attenuationDb)} (${r.backendName})")
-        if (r.curveEstimated) append("\nStep sizes estimated: this output does not report its volume curve.")
-    }
+    append("\n${s.backend?.shortName ?: "No effect"}: requested ${GainMath.formatDb(s.requestedDb)}")
+    append("\nAPI read-back: ")
+    append(s.confirmedDb?.joinToString { GainMath.formatDb(it) } ?: "not confirmed")
+    append("\nAttached: ${s.active}; enabled: ${s.enabledReported}; control: ${s.hasControl}")
+    val confirmed = s.active && s.enabledReported && s.hasControl && s.confirmedMatchesRequest
+    append(if (confirmed) "\nAPI matches request — not proof of audible application." else
+        "\nFine control NOT confirmed; whole levels or held volume only.")
+    if (r.curveEstimated) append("\nStep sizes estimated: this output does not report its volume curve.")
     r.message?.let { append("\n").append(it) }
+    s.message?.let { append("\n").append(it) }
+    if (s.active && !s.confirmedMatchesRequest) append("\nAPI read-back does not match requested gain.")
+    s.attempts.forEach { append("\n").append(it) }
 }

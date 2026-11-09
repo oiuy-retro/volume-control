@@ -54,6 +54,7 @@ import kotlin.math.sin
 @Composable
 fun VolumeDial(
     percent: Float,
+    enabled: Boolean = true,
     /** Apply rotation to the raw accumulator; must return the new **raw** percent. */
     onRotateDegrees: (Float) -> Float,
     /**
@@ -110,7 +111,8 @@ fun VolumeDial(
         Canvas(
             modifier = Modifier
                 .matchParentSize()
-                .pointerInput(Unit) {
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
                     detectDragGestures(
                         onDragStart = { offset ->
                             // Always seed from the raw accumulator, never a snapped display value.

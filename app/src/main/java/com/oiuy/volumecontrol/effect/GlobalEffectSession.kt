@@ -34,5 +34,5 @@ object GlobalEffectSession {
     fun disable() = controller.disable()
     fun reset() = controller.reset()
     fun refresh() = controller.refresh()
-    fun setRequestedDb(db: Float) = controller.setRequestedDb(db)
+    fun setRequestedDb(db: Float, force: Boolean = false) = controller.setRequestedDb(db, force)
 }
