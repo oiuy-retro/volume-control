@@ -2,6 +2,26 @@
 
 A Material 3 Expressive Android app with a large centered dial that changes media volume. One full 360° rotation changes `STREAM_MUSIC` by 10% of the stream maximum. Clockwise raises volume; counterclockwise lowers it. Fractional turns apply proportionally.
 
+## Diagnostic build 0.1.5 (Samsung fine volume)
+
+Version 0.1.5 (versionCode 18) is a diagnostic build for one question: can this app read and change Samsung's fine media volume, the finer setting that Samsung's own volume bar uses, on the tester's phone? It replaces the earlier gain experiment for diagnosis only. It does not add a fine-step dial; the normal dial is not shown in this build.
+
+What the screen shows:
+
+- Device manufacturer, model, device name, Android version and build name.
+- Android's public media volume: current index, minimum (Android 9 and later), maximum, whether it is muted, and the media output type (Android 13 and later).
+- Whether the two Samsung methods `semGetFineVolume(int)` and `semSetFineVolume(int, int, int)` exist on `AudioManager`, and the value the getter returns for music. The scale of that value is not assumed; the screen shows the raw number.
+- The result of the last test.
+
+What can change volume:
+
+- Only the "Test one fine step quieter" button. Each tap reads the current fine value, and if it is above 0 and media is not muted, asks Samsung's setter for that value minus one, once. It then reads the fine value and the public index again and shows before and after.
+- It does not restore the old value, retry, or fall back to normal volume steps.
+- Opening the app, rotating the screen, volume changes, output changes and the Refresh button only read values.
+- The home-screen widget only shows the percent and opens the app. Its old + and − actions do nothing in this build.
+
+How the methods are used: the app looks them up only when `Build.MANUFACTURER` is `samsung`, using the ordinary public `Class.getMethod` lookup for these two names. It does not use hidden-API exemptions, root, Shizuku, private Binder calls, or a lower target SDK. These methods are not part of a documented Android or Samsung SDK, so a firmware update can remove or block them; the screen reports that as an error. A number that changes on screen is not proof of an audible change.
+
 ## Dial behavior
 
 - Gesture tracking is relative to the dial center.
@@ -74,6 +94,8 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 
 ## Known limitations
 
+- The 0.1.5 diagnostic build shows only the diagnostic screen. The dial description below applies to the regular builds.
+
 - The home-screen widget cannot implement continuous dial rotation; only tap and ±10% actions are supported.
 - Media stream step count is device-dependent (often around 15 steps), so a 10% turn may map to one or two integer stream indices.
 - Dynamic color (Material You) requires API 31+. Older devices use the expressive light scheme or the dark color scheme.
@@ -81,8 +103,8 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 ## Package
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
-- versionName: `0.1.1`
-- versionCode: `4`
+- versionName: `0.1.5` (diagnostic build)
+- versionCode: `18`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

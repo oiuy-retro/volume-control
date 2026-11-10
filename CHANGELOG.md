@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.5 (diagnostic, versionCode 18)
+
+- Replaced the main screen with a Samsung fine-volume diagnostic. It shows device and Android version, public media volume index, minimum, maximum, mute state and media output type, and the raw value from Samsung's `semGetFineVolume(int)` for music.
+- Added a "Test one fine step quieter" button. It is the only thing in this build that changes volume: each tap reads the current fine value and calls `semSetFineVolume(int, int, int)` once with that value minus one, then reads back. No automatic restore, retry, or fallback to normal volume steps.
+- The methods are looked up with `Class.getMethod` only on devices whose manufacturer is Samsung. Lookup and call failures are shown on screen.
+- The dial is not shown. The home-screen widget is read-only; the + and − actions of widgets placed by earlier builds do nothing.
+- Added the normal `MODIFY_AUDIO_SETTINGS` permission.
+- Built from `main`, not from the 0.1.4 gain experiment. No fine-step dial yet.
+
 ## Unreleased
 
 - Stationary bezel ticks: 100 fine marks stay fixed on the dial rim; only the knob and indicator rotate with volume.

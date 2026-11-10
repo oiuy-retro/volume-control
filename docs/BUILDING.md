@@ -15,7 +15,7 @@
 ## On the project build box
 
 ```bash
-cd /workspace/volume-control
+cd /workspace/volume-control   # or a worktree such as /workspace/volume-control-samsung-diagnostic
 export JAVA_HOME=/workspace/android/tools/jdk-21.0.13+9
 export PATH="$JAVA_HOME/bin:$PATH"
 # local.properties points at /workspace/tools/sdk
@@ -67,3 +67,11 @@ export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
 Dial math coverage lives under `app/src/test/java/com/oiuy/volumecontrol/volume/`.
+
+Diagnostic coverage lives under `app/src/test/java/com/oiuy/volumecontrol/diagnostic/`. `FineVolumeDiagnosticTest` uses fake ports to check that refreshes never write, that a tap writes once with a freshly read value minus one, and that nothing is written when the device is not Samsung, the methods are missing, the value is 0, media is muted, or a read fails. `DiagnosticSourceGuardTest` scans the app sources so that no other code path calls a volume setter.
+
+Lint:
+
+```bash
+./gradlew :app:lintDebug --no-configuration-cache
+```

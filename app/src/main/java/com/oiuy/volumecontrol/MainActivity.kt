@@ -1,110 +1,87 @@
 package com.oiuy.volumecontrol
 
-import android.database.ContentObserver
-import android.net.Uri
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
+import com.oiuy.volumecontrol.diagnostic.DiagnosticScreen
+import com.oiuy.volumecontrol.diagnostic.DiagnosticViewModel
 import com.oiuy.volumecontrol.ui.VolumeControlTheme
-import com.oiuy.volumecontrol.ui.VolumeDial
-import com.oiuy.volumecontrol.volume.MediaVolumeController
 import com.oiuy.volumecontrol.widget.VolumeDialWidgetReceiver
-import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Diagnostic build (0.1.5): this activity only shows the Samsung fine-volume
+ * diagnostic. Lifecycle events, volume broadcasts and output-device changes
+ * only refresh readings. The only volume write is the explicit test button.
+ */
 class MainActivity : ComponentActivity() {
+    private val viewModel: DiagnosticViewModel by viewModels()
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            viewModel.refresh()
+            VolumeDialWidgetReceiver.requestUpdate(context)
+        }
+    }
+
+    private val deviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            viewModel.refresh()
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            viewModel.refresh()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             VolumeControlTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    val context = LocalContext.current
-                    val controller = remember { MediaVolumeController(context) }
-                    var percent by remember { mutableFloatStateOf(controller.fractionalPercent()) }
-                    val dragging = remember { AtomicBoolean(false) }
-
-                    DisposableEffect(Unit) {
-                        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-                            override fun onChange(selfChange: Boolean, uri: Uri?) {
-                                // Do not syncFromSystem while the user is dragging the dial.
-                                // Our own setStreamVolume would otherwise reset the fine
-                                // fractional level and freeze / jump the dial.
-                                if (dragging.get()) return
-                                controller.syncFromSystem()
-                                percent = controller.fractionalPercent()
-                                VolumeDialWidgetReceiver.requestUpdate(context)
-                            }
-                        }
-                        contentResolver.registerContentObserver(
-                            Settings.System.CONTENT_URI,
-                            true,
-                            observer,
-                        )
-                        onDispose {
-                            contentResolver.unregisterContentObserver(observer)
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .safeDrawingPadding(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        VolumeDial(
-                            percent = percent,
-                            onRotateDegrees = { degrees ->
-                                // Always advance the raw accumulator from finger deltas.
-                                controller.adjustByDegrees(degrees)
-                            },
-                            onReportedPercent = { reported ->
-                                val raw = controller.fractionalPercent()
-                                if (kotlin.math.abs(reported - raw) > 1e-4f) {
-                                    // Magnet overlay: STREAM_MUSIC follows snapped value;
-                                    // raw fractionalLevel is preserved for the next delta.
-                                    controller.setFractionalPercent(
-                                        reported,
-                                        preserveRawAccumulator = true,
-                                    )
-                                }
-                                percent = reported
-                            },
-                            currentRawPercent = { controller.fractionalPercent() },
-                            onTickCrossed = {
-                                controller.showSystemVolumeUi()
-                            },
-                            onDragStart = { dragging.set(true) },
-                            onDragEnd = {
-                                dragging.set(false)
-                                // Ensure stream matches raw when the gesture ends.
-                                percent = controller.fractionalPercent()
-                                // Widget refresh once per gesture, not every drag pixel.
-                                VolumeDialWidgetReceiver.requestUpdate(context)
-                            },
-                        )
-                    }
-                }
+                DiagnosticScreen(
+                    state = viewModel.state,
+                    testRunning = viewModel.testRunning,
+                    onRefresh = viewModel::refresh,
+                    onTest = viewModel::onTestTapped,
+                )
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ContextCompat.registerReceiver(
+            this,
+            volumeReceiver,
+            IntentFilter(VOLUME_CHANGED_ACTION),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        audioManager().registerAudioDeviceCallback(deviceCallback, mainHandler)
+        viewModel.refresh()
+    }
+
+    override fun onStop() {
+        audioManager().unregisterAudioDeviceCallback(deviceCallback)
+        unregisterReceiver(volumeReceiver)
+        super.onStop()
+    }
+
+    private fun audioManager(): AudioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+
+    private companion object {
+        const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
     }
 }
