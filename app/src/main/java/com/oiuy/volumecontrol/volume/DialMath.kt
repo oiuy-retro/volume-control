@@ -304,39 +304,6 @@ object DialMath {
         return ((level / maxVolume.toFloat()) * 100f).coerceIn(0f, 100f)
     }
 
-    /**
-     * Haptic detent index for [percent]. With [units] <= 0 this is the 0.1% fine
-     * tick ([tickIndexFromPercent]). With [units] > 0 it is the output unit the
-     * dial writes ([toStreamIndex] of the level), so one detent = one unit.
-     */
-    fun hapticTick(percent: Float, units: Int): Int =
-        if (units <= 0) {
-            tickIndexFromPercent(percent)
-        } else {
-            toStreamIndex((percent.coerceIn(0f, 100f) / 100f) * units, units)
-        }
-
-    /** Major detent: whole percent (units <= 0) or a 10% landmark unit (units > 0). */
-    fun isHapticMajor(tick: Int, units: Int): Boolean {
-        if (units <= 0) return isMajorTickIndex(tick)
-        // A unit is a landmark when it is the nearest unit to some multiple of 10%.
-        val percent = tick * 100f / units
-        val decade = kotlin.math.round(percent / 10f) * 10f
-        return toStreamIndex(decade / 100f * units, units) == tick
-    }
-
-    fun crossedIncludesHapticMajor(fromTick: Int, toTick: Int, units: Int): Boolean {
-        if (units <= 0) return crossedIncludesMajor(fromTick, toTick)
-        if (fromTick == toTick) return false
-        val step = if (toTick > fromTick) 1 else -1
-        var t = fromTick
-        while (t != toTick) {
-            t += step
-            if (isHapticMajor(t, units)) return true
-        }
-        return false
-    }
-
     /** Shortest signed angle delta from [fromDegrees] to [toDegrees] in (-180, 180]. */
     fun shortestAngleDelta(fromDegrees: Float, toDegrees: Float): Float {
         var delta = toDegrees - fromDegrees

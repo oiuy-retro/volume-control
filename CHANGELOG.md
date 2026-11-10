@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 (versionCode 21)
+
+- The dial face now has 50 ticks per turn, and every tick changes the volume. In Samsung fine mode one tick is one fine unit, so 150 units take 3 turns (turns = fine maximum / 50). Previously one turn was 10% of the range and most of the 100 marks did not change the volume.
+- One light haptic per tick and a strong haptic at each full turn (every 50 units).
+- In Android-steps mode the dial has 5 ticks per turn, one per whole step.
+- The magnet snaps the indicator onto ticks and will not snap again until the finger has moved 2 ticks (14.4°) away. It no longer changes the value written.
+- Widget + and − are unchanged (10% of the range). The fine-volume write path and fallback are unchanged.
+
 ## 1.0.0 (versionCode 20)
 
 - First full release. Same app as 0.1.5-pre.2, which was tested on a Galaxy S24+ (SM-S926U, Android 17): the dial and widget drive Samsung's fine media volume (150 steps on that phone), with Android's whole volume steps as the fallback on other phones.

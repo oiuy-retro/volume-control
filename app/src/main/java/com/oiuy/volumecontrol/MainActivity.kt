@@ -40,7 +40,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.oiuy.volumecontrol.ui.VolumeControlTheme
 import com.oiuy.volumecontrol.ui.VolumeDial
 import com.oiuy.volumecontrol.volume.MediaVolumeController
-import com.oiuy.volumecontrol.volume.VolumeMode
 import com.oiuy.volumecontrol.widget.VolumeDialWidgetReceiver
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -57,25 +56,28 @@ class MainActivity : ComponentActivity() {
                     val context = LocalContext.current
                     val lifecycleOwner = LocalLifecycleOwner.current
                     val controller = remember { MediaVolumeController(context) }
-                    var percent by remember { mutableFloatStateOf(controller.fractionalPercent()) }
+                    var level by remember { mutableFloatStateOf(controller.level()) }
+                    var maxUnits by remember { mutableIntStateOf(controller.maxUnits) }
+                    var unitsPerTurn by remember { mutableIntStateOf(controller.unitsPerTurn) }
                     var status by remember { mutableStateOf(controller.statusText()) }
-                    var hapticUnits by remember { mutableIntStateOf(hapticUnitsFor(controller)) }
                     val dragging = remember { AtomicBoolean(false) }
 
                     // Reads only: rebase the dial on the system value.
                     fun syncFromSystem() {
                         if (dragging.get()) return
                         controller.syncFromSystem()
-                        percent = controller.fractionalPercent()
+                        level = controller.level()
+                        maxUnits = controller.maxUnits
+                        unitsPerTurn = controller.unitsPerTurn
                         status = controller.statusText()
-                        hapticUnits = hapticUnitsFor(controller)
                     }
 
                     DisposableEffect(Unit) {
                         controller.onModeChanged = {
-                            percent = controller.fractionalPercent()
+                            level = controller.level()
+                            maxUnits = controller.maxUnits
+                            unitsPerTurn = controller.unitsPerTurn
                             status = controller.statusText()
-                            hapticUnits = hapticUnitsFor(controller)
                         }
                         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
                             override fun onChange(selfChange: Boolean, uri: Uri?) {
@@ -128,25 +130,19 @@ class MainActivity : ComponentActivity() {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         VolumeDial(
-                            percent = percent,
+                            level = level,
+                            maxUnits = maxUnits,
+                            unitsPerTurn = unitsPerTurn,
                             onRotateDegrees = { degrees ->
-                                // Always advance the raw accumulator from finger deltas.
+                                // Always advance the raw level from finger deltas.
                                 controller.adjustByDegrees(degrees)
                             },
-                            onReportedPercent = { reported ->
-                                val raw = controller.fractionalPercent()
-                                if (kotlin.math.abs(reported - raw) > 1e-4f) {
-                                    // Magnet overlay: output follows the snapped value;
-                                    // raw level is preserved for the next delta.
-                                    controller.setFractionalPercent(
-                                        reported,
-                                        preserveRawAccumulator = true,
-                                    )
-                                }
-                                percent = reported
+                            onReportedLevel = { reported ->
+                                // Magnet overlay is drawing only; output follows the raw level's unit.
+                                level = reported
                                 status = controller.statusText()
                             },
-                            currentRawPercent = { controller.fractionalPercent() },
+                            currentRawLevel = { controller.level() },
                             onTickCrossed = {
                                 controller.showSystemVolumeUi()
                             },
@@ -154,12 +150,11 @@ class MainActivity : ComponentActivity() {
                             onDragEnd = {
                                 dragging.set(false)
                                 controller.flush()
-                                percent = controller.fractionalPercent()
+                                level = controller.level()
                                 status = controller.statusText()
                                 // Widget refresh once per gesture, not every drag pixel.
                                 VolumeDialWidgetReceiver.requestUpdate(context)
                             },
-                            hapticUnits = hapticUnits,
                         )
                         Text(
                             text = status,
@@ -176,8 +171,5 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
-
-        fun hapticUnitsFor(controller: MediaVolumeController): Int =
-            if (controller.mode == VolumeMode.SAMSUNG_FINE) controller.maxUnits else 0
     }
 }
