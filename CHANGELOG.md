@@ -1,6 +1,13 @@
 # Changelog
 
-## 1.0.2 (versionCode 22)
+## 1.0.2 (versionCode 23, pre-release 1.0.2-pre.2)
+
+- Fixed: with the screen off, the volume buttons did nothing while the accessibility service was on (1.0.2-pre.1). The service already handed those presses back to Android, but on the Galaxy S24+ a handed-back screen-off press was lost. Now a screen-off press that reaches the service makes Android's normal one-step change: media volume while something plays, call volume during a call. With nothing playing and no call it is still handed back. Fine steps remain screen-on only.
+- The screen counts as on only when Android reports it is interactive and the display is fully on (not off, doze, or Always On Display). This is checked on every key event, not cached.
+- A held button's app repeat stops as soon as the screen turns off. A held press whose screen turned off part-way no longer makes fine steps.
+- Presses are paired by their down time. An UP is consumed only when its own DOWN was consumed, and repeats or an UP from a press whose first DOWN the service never saw go to Android, so a press whose UP was lost can no longer block later presses.
+
+## 1.0.2 (versionCode 22, pre-release 1.0.2-pre.1)
 
 - New: the hardware volume buttons can move Samsung's fine media volume by a step you choose, from 1 to 15 fine units per press (default 1, shown as for example "1 of 150 per press"). This uses an accessibility service inside Volume Control that you turn on in Settings > Accessibility. It reads only the volume up and volume down buttons, asks for no accessibility events, and cannot read anything on screen.
 - Works only while the screen is on. With the screen off Android does not pass volume buttons to accessibility services, so they keep Android's normal steps.

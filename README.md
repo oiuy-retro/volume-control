@@ -24,9 +24,10 @@ Volume Control can take over how far the phone's volume up and volume down butto
 
 - Pick a step from 1 to 15 fine units per press in the card under the dial. The label shows it against the phone's fine maximum, for example `1 of 150 per press`. The default is 1, the same size as one dial tick.
 - This uses an accessibility service called Volume Control buttons. Turn it on in Settings > Accessibility (tapping the card's on/off row when it is off opens that screen). Android shows its usual accessibility warning when you turn it on. The service reads only the volume up and volume down buttons. It asks for no accessibility events and cannot read anything on screen, other keys, or what you type.
-- It works only while the screen is on. With the screen off, Android sends the volume buttons straight to the system or the music app, so they use Android's normal steps.
+- Fine steps work only while the screen is on. The app treats the screen as on only when Android reports it is interactive and the display is fully on, so Always On Display and doze count as off. It checks this on every button press.
+- With the screen off, the buttons make Android's normal whole steps. On some phones Android never sends screen-off presses to the service. On the Galaxy S24+ a screen-off press that reached the service and was handed back did nothing, so when a screen-off press does arrive the app makes the normal one-step change itself, with the public `adjustStreamVolume` / `adjustSuggestedStreamVolume` calls: media volume while something plays, call volume during a call. With nothing playing and no call, the press is handed back to Android. This happens even when the card's switch is off, for as long as the accessibility service is on.
 - Each press reads Samsung's fine value, moves it by the step, keeps it between 0 and the fine maximum, and writes it with Samsung's fine setter. It asks Samsung to show its volume panel on each write. Holding a button keeps stepping: Android's own key repeats are used when it sends them, otherwise the app repeats after about 0.5 s and then about every 50 ms.
-- The buttons go back to Android's normal behavior when the card's switch is off, on phones without Samsung fine volume, when a fine read or write fails, and during a call, while ringing, or while a voice or video call app is active.
+- With the screen on, the buttons go back to Android's normal behavior when the card's switch is off, on phones without Samsung fine volume, when a fine read or write fails, and during a call, while ringing, or while a voice or video call app is active.
 - While it is on and the screen is on, the buttons change media volume even when nothing is playing (Android would otherwise change ring volume in that case on some settings).
 - The switch and step are stored on the phone in the app's SharedPreferences.
 
@@ -112,7 +113,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
 - versionName: `1.0.2`
-- versionCode: `22`
+- versionCode: `23`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

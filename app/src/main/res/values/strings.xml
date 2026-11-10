@@ -9,5 +9,5 @@
     <string name="open_app">Open Volume Control</string>
     <string name="volume_button_service_label">Volume Control buttons</string>
     <string name="volume_button_service_summary">Sets how far the volume buttons move media volume.</string>
-    <string name="volume_button_service_description">Volume Control reads only the volume up and volume down buttons, so each press can move Samsung media volume by the step you pick in the app. It does not read anything on screen, other keys, or what you type. It works only while the screen is on.</string>
+    <string name="volume_button_service_description">Volume Control reads only the volume up and volume down buttons, so each press can move Samsung media volume by the step you pick in the app. It does not read anything on screen, other keys, or what you type. The step works only while the screen is on. With the screen off the buttons make normal volume steps.</string>
 </resources>

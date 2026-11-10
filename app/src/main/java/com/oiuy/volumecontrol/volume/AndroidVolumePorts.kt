@@ -49,6 +49,30 @@ class AndroidStreamPort(context: Context) : StreamPort {
     }
 }
 
+/** Public one-step adjust calls only (never a fine-mode setStreamVolume). */
+class AndroidPlainVolumeKeyPort(context: Context) : PlainVolumeKeyPort {
+    private val audioManager =
+        context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+    override fun step(direction: Int, stream: PlainStream): PortResult<Unit> {
+        val adjust = when {
+            direction > 0 -> AudioManager.ADJUST_RAISE
+            direction < 0 -> AudioManager.ADJUST_LOWER
+            else -> return PortResult.Ok(Unit)
+        }
+        return try {
+            when (stream) {
+                PlainStream.MEDIA -> audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, adjust, 0)
+                PlainStream.SYSTEM_DEFAULT ->
+                    audioManager.adjustSuggestedStreamVolume(adjust, AudioManager.USE_DEFAULT_STREAM_TYPE, 0)
+            }
+            PortResult.Ok(Unit)
+        } catch (e: RuntimeException) {
+            PortResult.Failed(describe(e))
+        }
+    }
+}
+
 /**
  * Looks up only two Samsung AudioManager methods with ordinary public
  * [Class.getMethod]: `semGetFineVolume(int)` and `semSetFineVolume(int, int, int)`.

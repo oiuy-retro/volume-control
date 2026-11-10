@@ -96,7 +96,7 @@ fun VolumeButtonSettings(
                     },
                 )
                 Text(
-                    text = "Works only while the screen is on.",
+                    text = "Works only while the screen is on. With the screen off the buttons make normal steps.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
