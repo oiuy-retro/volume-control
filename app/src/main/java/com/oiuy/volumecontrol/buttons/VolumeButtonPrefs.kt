@@ -20,6 +20,17 @@ class VolumeButtonPrefs(context: Context) {
         get() = VolumeButtonSteps.clampStep(prefs.getInt(KEY_STEP, VolumeButtonSteps.DEFAULT_STEP))
         set(value) = prefs.edit { putInt(KEY_STEP, VolumeButtonSteps.clampStep(value)) }
 
+    /** Calls [onChange] whenever the switch or step changes. Keep the returned listener alive. */
+    fun observe(onChange: () -> Unit): SharedPreferences.OnSharedPreferenceChangeListener {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> onChange() }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return listener
+    }
+
+    fun stopObserving(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+    }
+
     companion object {
         private const val FILE = "volume_buttons"
         private const val KEY_ENABLED = "enabled"

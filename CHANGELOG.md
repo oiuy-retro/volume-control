@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 (versionCode 24, pre-release 1.0.2-pre.3)
+
+- Fixed (second attempt): screen-off volume buttons stopped working while the accessibility service was on, even with the in-app switch off. On the Galaxy S24+ it is the key filter itself that breaks them. The service now starts without key filtering (`flagRequestFilterKeyEvents` is no longer in the XML flags; `canRequestFilterKeyEvents` stays) and turns filtering on at runtime with `setServiceInfo` only while the screen is fully on, the switch is on, and Samsung fine volume is available. It turns filtering off on screen off, when the switch is turned off (right away, through a preference listener), and when fine volume is missing. It watches the screen-off, screen-on and unlock broadcasts and display changes, and it checks again when it connects and on every key.
+- Removed the 1.0.2-pre.2 screen-off fallback, which made Android's one-step change itself. A key that arrives while filtering should be off goes straight back to Android.
+- The press pairing and repeat fixes from pre.2 are kept.
+- The in-app note and the service description now say to turn the service off in Accessibility settings if screen-off buttons still misbehave.
+
 ## 1.0.2 (versionCode 23, pre-release 1.0.2-pre.2)
 
 - Fixed: with the screen off, the volume buttons did nothing while the accessibility service was on (1.0.2-pre.1). The service already handed those presses back to Android, but on the Galaxy S24+ a handed-back screen-off press was lost. Now a screen-off press that reaches the service makes Android's normal one-step change: media volume while something plays, call volume during a call. With nothing playing and no call it is still handed back. Fine steps remain screen-on only.

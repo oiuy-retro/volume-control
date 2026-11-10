@@ -2,9 +2,6 @@ package com.oiuy.volumecontrol.buttons
 
 import com.oiuy.volumecontrol.volume.FakeFine
 import com.oiuy.volumecontrol.volume.FakeTime
-import com.oiuy.volumecontrol.volume.PlainStream
-import com.oiuy.volumecontrol.volume.PlainVolumeKeyPort
-import com.oiuy.volumecontrol.volume.PortResult
 import com.oiuy.volumecontrol.volume.VolumeButtonSteps
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,33 +16,21 @@ class VolumeKeyHandlerTest {
         var interactive: Boolean = true,
         var display: Int? = STATE_ON,
         var mode: Int = MODE_NORMAL,
-        var music: Boolean = true,
         var max: Int = 15,
     ) : VolumeKeyEnvironment {
         override fun featureEnabled() = enabled
         override fun stepSize() = step
         override fun screenOn() = isScreenOn(interactive, display)
         override fun audioMode() = mode
-        override fun musicActive() = music
         override fun publicMax() = max
-    }
-
-    private class FakePlain(var fail: Boolean = false) : PlainVolumeKeyPort {
-        val steps = mutableListOf<Pair<Int, PlainStream>>()
-        override fun step(direction: Int, stream: PlainStream): PortResult<Unit> {
-            if (fail) return PortResult.Failed("no")
-            steps += direction to stream
-            return PortResult.Ok(Unit)
-        }
     }
 
     private val env = Env()
     private val fine = FakeFine(value = 70)
     private val time = FakeTime()
-    private val plain = FakePlain()
 
-    private fun handler(port: FakeFine? = fine, plainPort: PlainVolumeKeyPort? = plain) =
-        VolumeKeyHandler(env, port, plainPort, time, repeatTimeoutMs = 500, repeatIntervalMs = 50)
+    private fun handler(port: FakeFine? = fine) =
+        VolumeKeyHandler(env, port, time, repeatTimeoutMs = 500, repeatIntervalMs = 50)
 
     private fun VolumeKeyHandler.down(key: Int, repeat: Int = 0, t: Long = 1L) =
         onKeyEvent(key, ACTION_DOWN, repeat, t)
@@ -310,7 +295,7 @@ class VolumeKeyHandlerTest {
         assertFalse(isAccessibilityServiceListed("garbage", pkg, cls))
     }
 
-    // --- Screen off (1.0.2-pre.1 bug: every screen-off press was lost) ---
+    // --- Screen off: always handed back to Android (pre.2's own step is gone) ---
 
     @Test fun screenStateUsesInteractiveAndDisplayState() {
         assertTrue(isScreenOn(true, STATE_ON))
@@ -323,80 +308,28 @@ class VolumeKeyHandlerTest {
         assertFalse(isScreenOn(false, STATE_ON))
     }
 
-    @Test fun screenOffPressWithMusicMakesOnePlainMediaStepAndConsumesThePair() {
+    @Test fun screenOffPressIsPassedWithItsRepeatsAndUp() {
         env.interactive = false
         val h = handler()
         assertEquals(PassReason.SCREEN_OFF, h.passReason())
-        assertTrue(h.down(UP))
-        assertTrue(h.up(UP))
-        assertTrue(h.down(DOWN, t = 2))
-        assertTrue(h.up(DOWN, t = 2))
-        assertEquals(listOf(1 to PlainStream.MEDIA, -1 to PlainStream.MEDIA), plain.steps)
-        // Never a fine read or write with the screen off.
+        assertFalse(h.down(UP))
+        assertFalse(h.down(UP, repeat = 1))
+        assertFalse(h.up(UP))
+        assertFalse(h.down(DOWN, t = 2))
+        assertFalse(h.up(DOWN, t = 2))
         assertEquals(0, fine.reads)
         assertTrue(fine.writes.isEmpty())
         assertFalse(h.repeatPending)
     }
 
-    @Test fun dozeAndAlwaysOnDisplayCountAsOff() {
+    @Test fun dozeAndAlwaysOnDisplayArePassed() {
         for (state in listOf(STATE_OFF, STATE_DOZE, STATE_DOZE_SUSPEND)) {
             env.display = state
             val h = handler()
-            assertTrue(h.down(UP))
-            assertTrue(h.up(UP))
+            assertFalse(h.down(UP))
+            assertFalse(h.up(UP))
         }
-        assertEquals(3, plain.steps.size)
         assertTrue(fine.writes.isEmpty())
-    }
-
-    @Test fun screenOffInCallLetsAndroidPickTheStream() {
-        env.interactive = false
-        env.mode = MODE_IN_CALL
-        val h = handler()
-        assertTrue(h.down(DOWN))
-        assertTrue(h.up(DOWN))
-        assertEquals(listOf(-1 to PlainStream.SYSTEM_DEFAULT), plain.steps)
-    }
-
-    @Test fun screenOffNothingPlayingPassesDownAndUp() {
-        env.interactive = false
-        env.music = false
-        val h = handler()
-        assertFalse(h.down(UP))
-        assertFalse(h.down(UP, repeat = 1))
-        assertFalse(h.up(UP))
-        assertTrue(plain.steps.isEmpty())
-    }
-
-    @Test fun screenOffWorksEvenWithSwitchOffOrWithoutFineVolume() {
-        env.interactive = false
-        env.enabled = false
-        val h = handler(port = null)
-        assertTrue(h.down(UP))
-        assertTrue(h.up(UP))
-        assertEquals(1, plain.steps.size)
-    }
-
-    @Test fun screenOffPlainFailurePassesThePair() {
-        env.interactive = false
-        val failing = handler(plainPort = FakePlain(fail = true))
-        assertFalse(failing.down(UP))
-        assertFalse(failing.up(UP))
-        val none = handler(plainPort = null)
-        assertFalse(none.down(UP))
-        assertFalse(none.up(UP))
-    }
-
-    @Test fun screenOffHoldRepeatsPlainStepsOnHardwareRepeats() {
-        env.interactive = false
-        val h = handler()
-        assertTrue(h.down(UP))
-        assertTrue(h.down(UP, repeat = 1))
-        assertTrue(h.down(UP, repeat = 2))
-        assertTrue(h.up(UP))
-        assertEquals(3, plain.steps.size)
-        time.advance(2_000)
-        assertEquals(3, plain.steps.size)
     }
 
     @Test fun screenGoesOffMidHoldCancelsTheRepeatAtOnce() {
@@ -430,7 +363,6 @@ class VolumeKeyHandlerTest {
         assertTrue(h.down(UP, repeat = 1))
         assertTrue(h.down(UP, repeat = 2))
         assertEquals(71, fine.value)
-        assertTrue(plain.steps.isEmpty())
         assertTrue(h.up(UP))
     }
 
@@ -444,34 +376,35 @@ class VolumeKeyHandlerTest {
         assertFalse(h.down(UP, repeat = 1, t = 2))
         assertFalse(h.down(UP, repeat = 2, t = 2))
         assertFalse(h.up(UP, t = 2))
-        // A full screen-off press still works.
-        assertTrue(h.down(UP, t = 3))
-        assertTrue(h.up(UP, t = 3))
-        assertEquals(1, plain.steps.size)
-        assertEquals(71, fine.value)
+        // A full screen-off press goes to Android.
+        assertFalse(h.down(UP, t = 3))
+        assertFalse(h.up(UP, t = 3))
+        // Screen back on: the next press is a fine step again.
+        env.interactive = true
+        assertTrue(h.down(UP, t = 4))
+        assertTrue(h.up(UP, t = 4))
+        assertEquals(72, fine.value)
     }
 
     @Test fun pressAfterScreenTurnsBackOnUsesFineStepsAgain() {
         env.interactive = false
         val h = handler()
-        assertTrue(h.down(UP, t = 1))
-        assertTrue(h.up(UP, t = 1))
+        assertFalse(h.down(UP, t = 1))
+        assertFalse(h.up(UP, t = 1))
         env.interactive = true
         assertTrue(h.down(UP, t = 2))
         assertEquals(71, fine.value)
         assertTrue(h.repeatPending)
         assertTrue(h.up(UP, t = 2))
-        assertEquals(1, plain.steps.size)
     }
 
-    @Test fun plainPressStaysPlainIfScreenTurnsOnMidHold() {
+    @Test fun passedScreenOffPressStaysPassedIfScreenTurnsOnMidHold() {
         env.interactive = false
         val h = handler()
-        assertTrue(h.down(DOWN))
+        assertFalse(h.down(DOWN))
         env.interactive = true
-        assertTrue(h.down(DOWN, repeat = 1))
-        assertTrue(h.up(DOWN))
-        assertEquals(2, plain.steps.size)
+        assertFalse(h.down(DOWN, repeat = 1))
+        assertFalse(h.up(DOWN))
         assertTrue(fine.writes.isEmpty())
     }
 

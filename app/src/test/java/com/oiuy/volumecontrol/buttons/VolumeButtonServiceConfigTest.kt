@@ -12,12 +12,22 @@ class VolumeButtonServiceConfigTest {
 
     @Test fun filtersKeyEventsOnly() {
         assertTrue(config.contains("""android:canRequestFilterKeyEvents="true""""))
-        assertTrue(config.contains("""android:accessibilityFlags="flagRequestFilterKeyEvents""""))
+        // Filtering is turned on only at runtime; the service starts without it.
+        assertFalse(Regex("""accessibilityFlags="[^"]*flagRequestFilterKeyEvents""").containsMatchIn(config))
         assertTrue(config.contains("""android:canRetrieveWindowContent="false""""))
         assertFalse("no event types requested", config.contains("android:accessibilityEventTypes"))
         assertFalse(config.contains("canPerformGestures"))
         assertFalse(config.contains("canTakeScreenshot"))
         assertFalse(config.contains("flagRetrieveInteractiveWindows"))
+    }
+
+    @Test fun serviceTogglesFilterAtRuntimeAndHasNoOwnVolumeStep() {
+        val src = File("src/main/java/com/oiuy/volumecontrol/buttons/VolumeButtonService.kt").readText()
+        assertTrue(src.contains("FLAG_REQUEST_FILTER_KEY_EVENTS"))
+        assertTrue(src.contains("ACTION_SCREEN_OFF"))
+        assertTrue(src.contains("ACTION_SCREEN_ON"))
+        assertTrue(src.contains("ACTION_USER_PRESENT"))
+        assertFalse(Regex("""adjustStreamVolume|adjustSuggestedStreamVolume|setStreamVolume""").containsMatchIn(src))
     }
 
     @Test fun serviceIsBoundOnlyBySystem() {

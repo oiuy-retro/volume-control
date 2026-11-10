@@ -5,8 +5,6 @@ import android.view.Display
 import android.view.KeyEvent
 import com.oiuy.volumecontrol.volume.CoalescingWriter
 import com.oiuy.volumecontrol.volume.FineVolumePort
-import com.oiuy.volumecontrol.volume.PlainStream
-import com.oiuy.volumecontrol.volume.PlainVolumeKeyPort
 import com.oiuy.volumecontrol.volume.PortResult
 import com.oiuy.volumecontrol.volume.VolumeButtonSteps
 
@@ -20,8 +18,6 @@ interface VolumeKeyEnvironment {
     fun screenOn(): Boolean
     /** AudioManager.getMode(). Anything other than MODE_NORMAL means a call or ringing. */
     fun audioMode(): Int
-    /** AudioManager.isMusicActive(). */
-    fun musicActive(): Boolean
     /** Public STREAM_MUSIC maximum. */
     fun publicMax(): Int
 }
@@ -48,14 +44,9 @@ enum class PassReason { SCREEN_OFF, FEATURE_OFF, NO_FINE_VOLUME, CALL_OR_RINGING
  * Screen on: moves Samsung fine media volume by the chosen step, or passes the key to
  * Android unchanged (switch off, no fine volume, fine failure, call or ringing).
  *
- * Screen off (checked live on every event): never fine steps. In testing on the S24+ (One UI,
- * Android 17) volume keys did nothing with the screen off while the service was on, even
- * though 1.0.2-pre.1 already returned them unhandled. So instead of returning a screen-off
- * key that reaches the service, the handler makes Android's own
- * plain one-step change and consumes the key: call volume in a call, media volume while
- * media plays. With nothing playing and no call the key is passed through (Android
- * normally does nothing then). On phones that never send screen-off keys to accessibility
- * services this path is simply never used.
+ * Screen off (checked live on every event): the key is passed to Android unchanged. Normally
+ * no key arrives then at all, because [KeyFilterPolicy] has the service drop key filtering
+ * while the screen is off (on the S24+ the filter itself broke screen-off volume keys).
  *
  * Pairing: a press is decided on its first ACTION_DOWN and identified by the event's
  * downTime. Its repeats and its ACTION_UP (same downTime) get the same answer, so Android
@@ -72,8 +63,6 @@ class VolumeKeyHandler(
     private val env: VolumeKeyEnvironment,
     /** Null when the phone is not Samsung or the fine methods are missing. */
     private val fine: FineVolumePort?,
-    /** Null disables the screen-off plain step (screen-off keys are then passed through). */
-    private val plain: PlainVolumeKeyPort?,
     private val scheduler: CoalescingWriter.Scheduler,
     private val repeatTimeoutMs: Long,
     private val repeatIntervalMs: Long,
@@ -81,7 +70,6 @@ class VolumeKeyHandler(
     private sealed interface Press {
         data object Passed : Press
         data object Fine : Press
-        data class Plain(val stream: PlainStream) : Press
     }
 
     private data class Tracked(val downTime: Long, val press: Press)
@@ -157,41 +145,19 @@ class VolumeKeyHandler(
                     if (env.screenOn()) step(direction, writeAtLimit = false)
                     true
                 }
-                is Press.Plain -> {
-                    plain?.step(direction, state.stream)
-                    true
-                }
             }
         }
         // New press. A DOWN without an UP for the last one also starts over.
         if (timerKey == keyCode) cancelTimer()
         hardwareRepeats -= keyCode
         presses.remove(keyCode)
-        if (!env.screenOn()) {
-            cancelTimer()
-            return startPlainPress(keyCode, direction, downTime)
-        }
+        if (!env.screenOn()) cancelTimer()
         if (passReason() != null || step(direction, writeAtLimit = true) != null) {
             presses[keyCode] = Tracked(downTime, Press.Passed)
             return false
         }
         presses[keyCode] = Tracked(downTime, Press.Fine)
         startTimer(keyCode, direction)
-        return true
-    }
-
-    private fun startPlainPress(keyCode: Int, direction: Int, downTime: Long): Boolean {
-        val stream = when {
-            env.audioMode() != AudioManager.MODE_NORMAL -> PlainStream.SYSTEM_DEFAULT
-            env.musicActive() -> PlainStream.MEDIA
-            else -> null
-        }
-        val port = plain
-        if (stream == null || port == null || port.step(direction, stream) !is PortResult.Ok) {
-            presses[keyCode] = Tracked(downTime, Press.Passed)
-            return false
-        }
-        presses[keyCode] = Tracked(downTime, Press.Plain(stream))
         return true
     }
 

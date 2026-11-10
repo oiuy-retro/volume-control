@@ -25,20 +25,3 @@ interface FineVolumePort {
     /** Write with Samsung's flags argument, for example [VolumeButtonSteps.FLAG_SHOW_UI]. */
     fun stepTo(index: Int, flags: Int): PortResult<Unit>
 }
-
-/** Which stream a plain Android volume step should move. */
-enum class PlainStream {
-    /** STREAM_MUSIC. */
-    MEDIA,
-    /** Let Android pick (call volume in a call), like a normal button press. */
-    SYSTEM_DEFAULT,
-}
-
-/**
- * Android's ordinary one-step volume change, as the hardware buttons would make it.
- * Used only for screen-off volume buttons that reached the accessibility service.
- */
-interface PlainVolumeKeyPort {
-    /** [direction] > 0 raises, < 0 lowers. No volume panel. */
-    fun step(direction: Int, stream: PlainStream): PortResult<Unit>
-}
