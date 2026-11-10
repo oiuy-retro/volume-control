@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 (versionCode 25, pre-release 1.0.2-pre.4)
+
+- Fixed: the volume buttons broke Samsung's Separate app sound. With an app assigned to the phone speaker and music on Bluetooth, the service always wrote the default (Bluetooth) fine volume. Now each new press first checks where media is playing, using `AudioManager.getActivePlaybackConfigurations()` with each playback's output device (Android 12+) and `getAudioDevicesForAttributes()` for the default media output (Android 13+). The press goes to Samsung's normal handling if media plays on two or more output types, or on an output other than the default. Only media and game usages count. When the device information is missing, it falls back to the earlier behavior unless the outputs are clearly mixed.
+- The decision is made once per press on its first DOWN and kept for that press's repeats and UP. Repeat ticks do not re-read the playback list.
+- Limits: Android's public playback list can include paused players, so a paused video whose app keeps its player open may still count. The app cannot see which app is in focus.
+
 ## 1.0.2 (versionCode 24, pre-release 1.0.2-pre.3)
 
 - Fixed (second attempt): screen-off volume buttons stopped working while the accessibility service was on, even with the in-app switch off. On the Galaxy S24+ it is the key filter itself that breaks them. The service now starts without key filtering (`flagRequestFilterKeyEvents` is no longer in the XML flags; `canRequestFilterKeyEvents` stays) and turns filtering on at runtime with `setServiceInfo` only while the screen is fully on, the switch is on, and Samsung fine volume is available. It turns filtering off on screen off, when the switch is turned off (right away, through a preference listener), and when fine volume is missing. It watches the screen-off, screen-on and unlock broadcasts and display changes, and it checks again when it connects and on every key.

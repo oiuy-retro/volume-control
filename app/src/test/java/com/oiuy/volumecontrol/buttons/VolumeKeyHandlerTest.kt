@@ -17,12 +17,18 @@ class VolumeKeyHandlerTest {
         var display: Int? = STATE_ON,
         var mode: Int = MODE_NORMAL,
         var max: Int = 15,
+        var routes: PlaybackRoutes? = null,
     ) : VolumeKeyEnvironment {
         override fun featureEnabled() = enabled
         override fun stepSize() = step
         override fun screenOn() = isScreenOn(interactive, display)
         override fun audioMode() = mode
         override fun publicMax() = max
+        var routeReads = 0
+        override fun playbackRoutes(): PlaybackRoutes? {
+            routeReads++
+            return routes
+        }
     }
 
     private val env = Env()
@@ -434,7 +440,56 @@ class VolumeKeyHandlerTest {
         assertTrue(h.up(UP, t = 1))
     }
 
+    // --- Separate app sound ---
+
+    @Test fun mixedOutputsPassThePressWithItsRepeatsAndUp() {
+        env.routes = PlaybackRoutes(setOf(BT_A2DP), listOf(BT_A2DP, SPEAKER))
+        val h = handler()
+        assertEquals(PassReason.SEPARATE_OUTPUTS, h.passReason())
+        assertFalse(h.down(UP))
+        assertFalse(h.down(UP, repeat = 1))
+        assertFalse(h.up(UP))
+        assertTrue(fine.writes.isEmpty())
+        assertFalse(h.repeatPending)
+    }
+
+    @Test fun bluetoothOnlyIsStillFine() {
+        env.routes = PlaybackRoutes(setOf(BT_A2DP), listOf(BT_A2DP))
+        val h = handler()
+        assertTrue(h.down(UP))
+        assertTrue(h.up(UP))
+        assertEquals(71, fine.value)
+    }
+
+    @Test fun routingIsReadOncePerPressAndKeptForTheWholePress() {
+        val h = handler()
+        assertTrue(h.down(UP))
+        val reads = env.routeReads
+        assertEquals(1, reads)
+        // A speaker playback starts mid-hold: the consumed press stays consumed and keeps stepping.
+        env.routes = PlaybackRoutes(setOf(BT_A2DP), listOf(BT_A2DP, SPEAKER))
+        time.advance(500)
+        assertTrue(h.down(UP, repeat = 1))
+        assertTrue(h.up(UP))
+        assertEquals(1, env.routeReads)
+        assertEquals(73, fine.value)
+        // The next press sees it and goes to Samsung.
+        assertFalse(h.down(UP, t = 2))
+        assertFalse(h.up(UP, t = 2))
+        assertEquals(2, env.routeReads)
+    }
+
+    @Test fun routingNotReadWhenCheaperChecksAlreadyPass() {
+        env.enabled = false
+        val h = handler()
+        assertFalse(h.down(UP))
+        assertEquals(0, env.routeReads)
+    }
+
     private companion object {
+        // android.media.AudioDeviceInfo types.
+        const val SPEAKER = 2
+        const val BT_A2DP = 8
         // android.view.KeyEvent and android.media.AudioManager values.
         const val UP = VolumeKeyHandler.KEY_UP
         const val DOWN = VolumeKeyHandler.KEY_DOWN

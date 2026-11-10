@@ -68,6 +68,7 @@ class VolumeButtonService : AccessibilityService() {
         val screenOn = {
             isScreenOn(power.isInteractive, displays.getDisplay(Display.DEFAULT_DISPLAY)?.state)
         }
+        val routes = AndroidPlaybackRoutes(audioManager)
         val env = object : VolumeKeyEnvironment {
             override fun featureEnabled(): Boolean = buttonPrefs.enabled
             override fun stepSize(): Int = buttonPrefs.stepSize
@@ -75,6 +76,7 @@ class VolumeButtonService : AccessibilityService() {
             override fun screenOn(): Boolean = screenOn()
             override fun audioMode(): Int = audioManager.mode
             override fun publicMax(): Int = publicMax()
+            override fun playbackRoutes(): PlaybackRoutes? = routes.snapshot()
         }
         val keys = VolumeKeyHandler(
             env = env,

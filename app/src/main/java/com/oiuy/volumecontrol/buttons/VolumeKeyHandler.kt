@@ -20,6 +20,8 @@ interface VolumeKeyEnvironment {
     fun audioMode(): Int
     /** Public STREAM_MUSIC maximum. */
     fun publicMax(): Int
+    /** Where media is playing right now, or null if unknown. Read once per new press. */
+    fun playbackRoutes(): PlaybackRoutes?
 }
 
 /**
@@ -36,13 +38,16 @@ fun isScreenOn(interactive: Boolean, displayState: Int?): Boolean {
     }
 }
 
-enum class PassReason { SCREEN_OFF, FEATURE_OFF, NO_FINE_VOLUME, CALL_OR_RINGING, FINE_READ_FAILED, FINE_WRITE_FAILED }
+enum class PassReason {
+    SCREEN_OFF, FEATURE_OFF, NO_FINE_VOLUME, CALL_OR_RINGING, SEPARATE_OUTPUTS, FINE_READ_FAILED, FINE_WRITE_FAILED,
+}
 
 /**
  * Decides what happens to a volume key event that reached the accessibility service.
  *
  * Screen on: moves Samsung fine media volume by the chosen step, or passes the key to
- * Android unchanged (switch off, no fine volume, fine failure, call or ringing).
+ * Android unchanged (switch off, no fine volume, fine failure, call or ringing, or media
+ * playing on more than one output or off the default output, see [PlaybackRouting]).
  *
  * Screen off (checked live on every event): the key is passed to Android unchanged. Normally
  * no key arrives then at all, because [KeyFilterPolicy] has the service drop key filtering
@@ -87,13 +92,17 @@ class VolumeKeyHandler(
     /** True while the app repeat timer is pending (for tests). */
     val repeatPending: Boolean get() = timerKey != null
 
-    /** Why a new screen-on fine press would be passed through right now, or null if handled. */
-    fun passReason(): PassReason? = when {
+    /**
+     * Why a new screen-on fine press would be passed through right now, or null if handled.
+     * [checkRouting] reads the playback routes (new presses only, not repeat ticks).
+     */
+    fun passReason(checkRouting: Boolean = true): PassReason? = when {
         !env.screenOn() -> PassReason.SCREEN_OFF
         !env.featureEnabled() -> PassReason.FEATURE_OFF
         fine == null || fine.availability() !is PortResult.Ok -> PassReason.NO_FINE_VOLUME
         VolumeButtonSteps.fineMax(env.publicMax()) <= 0 -> PassReason.NO_FINE_VOLUME
         env.audioMode() != AudioManager.MODE_NORMAL -> PassReason.CALL_OR_RINGING
+        checkRouting && PlaybackRouting.separateOutputsActive(env.playbackRoutes()) -> PassReason.SEPARATE_OUTPUTS
         else -> null
     }
 
@@ -209,7 +218,8 @@ class VolumeKeyHandler(
         timerKey = null
         if (presses[keyCode]?.press != Press.Fine || keyCode in hardwareRepeats) return
         // Stop repeating if the screen goes off, a call starts, or the switch is turned off.
-        if (passReason() != null) return
+        // Routing was decided on the press's first DOWN and is kept for the whole press.
+        if (passReason(checkRouting = false) != null) return
         if (step(direction, writeAtLimit = false) != null) return
         timerKey = keyCode
         scheduler.schedule(repeatIntervalMs) { onTimer(keyCode, direction) }

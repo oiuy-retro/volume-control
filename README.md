@@ -28,6 +28,7 @@ Volume Control can take over how far the phone's volume up and volume down butto
 - Key filtering is switched on only while it is needed. The service starts with it off and turns it on only while the screen is fully on, the card's switch is on, and Samsung fine volume is available. It turns it off again when the screen turns off, when the switch is turned off, or when fine volume is missing. It watches the screen-off, screen-on and unlock broadcasts and display state changes, and it rechecks on every key. On the Galaxy S24+, having key filtering on with the screen off broke the volume buttons, whatever the service did with the presses, so with the screen off the service now does not ask for the buttons at all and Android handles them as usual. Any button press that still reaches the service while filtering should be off goes straight back to Android.
 - If the volume buttons still misbehave with the screen off, turn off Volume Control buttons in Settings > Accessibility. The dial and widget keep working without it.
 - Each press reads Samsung's fine value, moves it by the step, keeps it between 0 and the fine maximum, and writes it with Samsung's fine setter. It asks Samsung to show its volume panel on each write. Holding a button keeps stepping: Android's own key repeats are used when it sends them, otherwise the app repeats after about 0.5 s and then about every 50 ms.
+- Samsung's Separate app sound: if an app is playing on a different output than the rest of your media, for example a browser video on the phone speaker while music plays over Bluetooth, the presses go to Samsung's normal steps, so Samsung decides which output they change. At each new press the app checks which outputs media is playing on, using Android's public playback list, and hands the press back if media is playing on two or more outputs, or on an output that is not the default media output. Notification, touch and alarm sounds are not counted. This needs Android 12 or later (Android 13 or later to know the default output). A paused video may still count as playing if the app keeps its player open, and the app cannot tell which app is in focus. Once a press is decided, its repeats keep the same decision.
 - With the screen on, the buttons go back to Android's normal behavior when the card's switch is off, on phones without Samsung fine volume, when a fine read or write fails, and during a call, while ringing, or while a voice or video call app is active.
 - While it is on and the screen is on, the buttons change media volume even when nothing is playing (Android would otherwise change ring volume in that case on some settings).
 - The switch and step are stored on the phone in the app's SharedPreferences.
@@ -114,7 +115,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
 - versionName: `1.0.2`
-- versionCode: `24`
+- versionCode: `25`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 
