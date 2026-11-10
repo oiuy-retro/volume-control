@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.1.5 (diagnostic, versionCode 18)
+## 0.1.5 (versionCode 19, pre-release 0.1.5-pre.2)
+
+- The dial and widget are back, and on Samsung phones they drive Samsung's fine media volume (Android's media maximum times 10, 150 on a 15-step phone) through `semGetFineVolume(int)` / `semSetFineVolume(int, int, int)`, looked up with `Class.getMethod`.
+- One full turn is still 10% of the range. In fine mode each fine unit is one haptic tick and every 10% is a strong tick; the whole-percent magnet is unchanged.
+- Writes happen only when the whole fine unit changes, coalesced to the latest value at most about every 30 ms, and flushed when the finger lifts. The whole-step setter is never used in fine mode.
+- Opening or returning to the app, and volume broadcasts, only read the fine value to move the dial.
+- Widget + and − change 10% of the fine range; the widget percent comes from the fine value.
+- Falls back to Android's whole steps on other phones, when the methods are missing, or after any fine failure, with a status line under the dial.
+- Removed the diagnostic test screen; its result was verified on a Galaxy S24+ (SM-S926U, Android 17).
+- Fixed a lint error in the widget description string.
+
+## 0.1.5-pre.1 diagnostic (versionCode 18)
 
 - Replaced the main screen with a Samsung fine-volume diagnostic. It shows device and Android version, public media volume index, minimum, maximum, mute state and media output type, and the raw value from Samsung's `semGetFineVolume(int)` for music.
 - Added a "Test one fine step quieter" button. It is the only thing in this build that changes volume: each tap reads the current fine value and calls `semSetFineVolume(int, int, int)` once with that value minus one, then reads back. No automatic restore, retry, or fallback to normal volume steps.

@@ -68,7 +68,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 Dial math coverage lives under `app/src/test/java/com/oiuy/volumecontrol/volume/`.
 
-Diagnostic coverage lives under `app/src/test/java/com/oiuy/volumecontrol/diagnostic/`. `FineVolumeDiagnosticTest` uses fake ports to check that refreshes never write, that a tap writes once with a freshly read value minus one, and that nothing is written when the device is not Samsung, the methods are missing, the value is 0, media is muted, or a read fails. `DiagnosticSourceGuardTest` scans the app sources so that no other code path calls a volume setter.
+Volume backend coverage lives in the same folder: `VolumeEngineTest` (mode choice, fallback, clamping, no public writes in fine mode), `CoalescingWriterTest` (latest-value coalescing), `MediaVolumeControllerTest` (fine mapping, widget steps, reads never write), `HapticUnitsTest` (one haptic tick per fine unit), and `VolumeSourceGuardTest` (platform volume writes and method lookups only in `AndroidVolumePorts.kt`, no restricted access techniques).
 
 Lint:
 

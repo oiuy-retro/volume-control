@@ -16,42 +16,41 @@ import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.ActionCallback
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
+import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
+import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.oiuy.volumecontrol.MainActivity
 import com.oiuy.volumecontrol.R
-import com.oiuy.volumecontrol.diagnostic.AndroidPublicVolumePort
-import com.oiuy.volumecontrol.diagnostic.PortResult
-import com.oiuy.volumecontrol.volume.DialMath
+import com.oiuy.volumecontrol.volume.MediaVolumeController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * Home-screen widget. In the 0.1.5 diagnostic build it is read-only: it shows
- * the public media volume percent and opens the app. The + / − controls are
- * removed, and their action classes below are kept only so widgets placed by
- * an earlier build do nothing when tapped instead of changing volume.
+ * Home-screen widget that mirrors the dial's look (percent + dial face).
+ *
+ * Android app widgets cannot receive continuous rotation gestures. Interaction
+ * is limited to: tap dial to open the app; + / − buttons adjust media volume
+ * by 10% of the stream max and refresh the widget.
  */
 class VolumeDialWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val percent = when (val read = AndroidPublicVolumePort(context).read()) {
-            is PortResult.Ok -> DialMath.percentOf(read.value.index, read.value.max)
-            is PortResult.Failed -> 0
-        }
+        val percent = MediaVolumeController(context).percent
         provideContent {
             GlanceTheme {
                 VolumeDialWidgetContent(percent = percent)
@@ -87,36 +86,52 @@ private fun VolumeDialWidgetContent(percent: Int) {
             )
         }
         Spacer(GlanceModifier.height(8.dp))
-        Text(
-            text = "Diagnostic build",
-            style = TextStyle(
-                color = GlanceTheme.colors.onSurface,
-                fontSize = 12.sp,
-            ),
-        )
+        Row(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "−",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                modifier = GlanceModifier
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clickable(actionRunCallback<DecreaseVolumeAction>()),
+            )
+            Spacer(GlanceModifier.width(8.dp))
+            Text(
+                text = "+",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSurface,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                modifier = GlanceModifier
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clickable(actionRunCallback<IncreaseVolumeAction>()),
+            )
+        }
     }
 }
 
-/** Kept for widgets placed by earlier builds. Diagnostic build: no volume change. */
 class IncreaseVolumeAction : ActionCallback {
     override suspend fun onAction(
         context: Context,
         glanceId: GlanceId,
         parameters: ActionParameters,
     ) {
-        // Diagnostic build: intentionally no volume change. Refresh the display only.
+        MediaVolumeController(context).adjustByPercentStep(VolumeActions.EXTRA_PERCENT_STEP)
         VolumeDialWidget().update(context, glanceId)
     }
 }
 
-/** Kept for widgets placed by earlier builds. Diagnostic build: no volume change. */
 class DecreaseVolumeAction : ActionCallback {
     override suspend fun onAction(
         context: Context,
         glanceId: GlanceId,
         parameters: ActionParameters,
     ) {
-        // Diagnostic build: intentionally no volume change. Refresh the display only.
+        MediaVolumeController(context).adjustByPercentStep(-VolumeActions.EXTRA_PERCENT_STEP)
         VolumeDialWidget().update(context, glanceId)
     }
 }

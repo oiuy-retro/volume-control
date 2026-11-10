@@ -1,120 +1,136 @@
 package com.oiuy.volumecontrol.volume
 
 import android.content.Context
-import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 
 /**
- * Thin wrapper around [AudioManager] for STREAM_MUSIC.
- * Changing media volume does not require a runtime permission.
+ * Dial and widget volume control in "units" of the active [VolumeEngine] mode:
+ * Samsung fine units (public max × 10) when available, otherwise Android's
+ * integer media steps.
  *
- * Keeps a fractional level so fine dial turns accumulate correctly against
- * coarse stream indices (often only ~15 steps). The UI reads
- * [fractionalPercent] so the center readout can update every 0.1% tick
- * even when the integer stream index has not moved yet.
+ * Keeps a fractional level so dial turns accumulate smoothly; writes only when
+ * the rounded integer target changes, coalesced through [CoalescingWriter].
+ * [syncFromSystem] only reads.
  */
-class MediaVolumeController(context: Context) {
-    private val audioManager =
-        context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+class MediaVolumeController(
+    private val engine: VolumeEngine,
+    scheduler: CoalescingWriter.Scheduler,
+    private val now: () -> Long,
+) {
+    constructor(context: Context) : this(
+        engine = createVolumeEngine(context),
+        scheduler = HandlerScheduler(),
+        now = SystemClock::uptimeMillis,
+    )
 
-    private var fractionalLevel: Float = currentVolume.toFloat()
-    private var lastShowUiUptimeMs: Long = 0L
+    private val writer = CoalescingWriter(now, WRITE_INTERVAL_MS, scheduler, ::writeNow)
+    private var fractionalLevel: Float = 0f
+    private var lastShowUiUptimeMs: Long = Long.MIN_VALUE / 2
 
-    val maxVolume: Int
-        get() = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+    /** Called after a fine failure switched the engine to Android steps. */
+    var onModeChanged: (() -> Unit)? = null
 
-    val currentVolume: Int
-        get() = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+    var maxUnits: Int = 0
+        private set
 
-    /** Coarse percent from the live integer stream index (widget / system sync). */
-    val percent: Int
-        get() = DialMath.percentOf(currentVolume, maxVolume)
-
-    /** Fine percent 0..100 from the fractional level (one decimal place is meaningful). */
-    fun fractionalPercent(): Float = DialMath.fractionalPercentOf(fractionalLevel, maxVolume)
-
-    fun syncFromSystem() {
-        fractionalLevel = currentVolume.toFloat()
+    init {
+        syncFromSystem()
     }
 
-    fun setVolume(index: Int) {
-        val clamped = index.coerceIn(0, maxVolume)
-        if (clamped != currentVolume) {
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, clamped, 0)
-        }
-        fractionalLevel = clamped.toFloat()
+    val mode: VolumeMode get() = engine.mode
+    val fallbackReason: String? get() = engine.fallbackReason
+
+    /** Integer target the dial currently represents. */
+    val currentUnits: Int get() = DialMath.toStreamIndex(fractionalLevel, maxUnits)
+
+    /** Whole percent for the widget. */
+    val percent: Int get() = DialMath.percentOf(currentUnits, maxUnits)
+
+    fun fractionalPercent(): Float = DialMath.fractionalPercentOf(fractionalLevel, maxUnits)
+
+    fun statusText(): String = volumeStatusText(mode, currentUnits, maxUnits, fallbackReason)
+
+    /** Read only: drops any pending write and rebases on the system value. */
+    fun syncFromSystem() {
+        val value = engine.readUnits()
+        maxUnits = engine.maxUnits()
+        fractionalLevel = value.coerceIn(0, maxUnits).toFloat()
+        writer.reset(value)
     }
 
     /**
-     * Drive STREAM_MUSIC from a 0..100 display percent **without** moving the
-     * raw [fractionalLevel] accumulator. Used as a tiny-magnet output overlay so
-     * the next finger delta still continues from the continuous raw percent.
+     * Drive the output from a 0..100 display percent **without** moving the raw
+     * accumulator when [preserveRawAccumulator] is true (magnet overlay).
      */
     fun setFractionalPercent(percent: Float, preserveRawAccumulator: Boolean): Float {
-        if (maxVolume <= 0) return 0f
+        if (maxUnits <= 0) return 0f
         val p = percent.coerceIn(0f, 100f)
-        val level = DialMath.clampFractional((p / 100f) * maxVolume.toFloat(), maxVolume)
-        val next = DialMath.toStreamIndex(level, maxVolume)
-        if (next != currentVolume) {
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-        }
-        if (!preserveRawAccumulator) {
-            fractionalLevel = level
-        }
-        return if (preserveRawAccumulator) {
-            // Reported overlay percent (snapped); raw stays in fractionalLevel.
-            p
-        } else {
-            fractionalPercent()
-        }
+        val level = DialMath.clampFractional((p / 100f) * maxUnits.toFloat(), maxUnits)
+        writer.submit(DialMath.toStreamIndex(level, maxUnits))
+        if (!preserveRawAccumulator) fractionalLevel = level
+        return if (preserveRawAccumulator) p else fractionalPercent()
     }
 
-    /**
-     * Apply a dial rotation of [deltaDegrees]. Returns the new fractional percent
-     * (0..100). The integer stream index is updated only when rounding changes it.
-     * Callers should clamp [deltaDegrees] with [DialMath.clampRotationDegrees] first
-     * so hard stops at 0% / 100% are respected in the gesture as well.
-     */
+    /** Apply a dial rotation. One full turn = 10% of [maxUnits]. Returns the raw percent. */
     fun adjustByDegrees(deltaDegrees: Float): Float {
         if (deltaDegrees == 0f) return fractionalPercent()
-        val delta = DialMath.volumeDeltaFromDegrees(deltaDegrees, maxVolume)
-        // Resync if the system volume was changed elsewhere since last adjust.
-        if (kotlin.math.abs(fractionalLevel - currentVolume) > 1.01f) {
-            syncFromSystem()
-        }
-        fractionalLevel = DialMath.clampFractional(fractionalLevel + delta, maxVolume)
-        val next = DialMath.toStreamIndex(fractionalLevel, maxVolume)
-        if (next != currentVolume) {
-            // No FLAG_SHOW_UI here: the dial shows the system panel on tick
-            // crossings via [showSystemVolumeUi], rate-limited separately.
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-        }
+        val delta = DialMath.volumeDeltaFromDegrees(deltaDegrees, maxUnits)
+        fractionalLevel = DialMath.clampFractional(fractionalLevel + delta, maxUnits)
+        writer.submit(DialMath.toStreamIndex(fractionalLevel, maxUnits))
         return fractionalPercent()
     }
 
+    /** Write any coalesced target now (end of gesture). */
+    fun flush() = writer.flush()
+
+    /** Widget ±: reads the system value, then writes once. Returns the new units. */
     fun adjustByPercentStep(percentOfMax: Float): Int {
-        val next = DialMath.applyPercentStep(currentVolume, percentOfMax, maxVolume)
-        setVolume(next)
+        syncFromSystem()
+        val next = DialMath.applyPercentStep(currentUnits, percentOfMax, maxUnits)
+        if (next != currentUnits) {
+            if (engine.writeUnits(next) == WriteResult.MODE_CHANGED) {
+                syncFromSystem()
+                onModeChanged?.invoke()
+                return currentUnits
+            }
+            fractionalLevel = next.toFloat()
+            writer.reset(next)
+        }
         return next
     }
 
-    /**
-     * Bring up the system media-volume panel the same way a hardware volume
-     * key does, without necessarily changing the integer stream index.
-     * Rate-limited so rapid tick crossings do not flood the system UI.
-     */
+    /** System volume panel on tick crossings, Android-steps mode only, rate-limited. */
     fun showSystemVolumeUi() {
-        val now = SystemClock.uptimeMillis()
-        if (now - lastShowUiUptimeMs < SHOW_UI_MIN_INTERVAL_MS) return
-        lastShowUiUptimeMs = now
-        audioManager.adjustStreamVolume(
-            AudioManager.STREAM_MUSIC,
-            AudioManager.ADJUST_SAME,
-            AudioManager.FLAG_SHOW_UI,
-        )
+        val t = now()
+        if (t - lastShowUiUptimeMs < SHOW_UI_MIN_INTERVAL_MS) return
+        lastShowUiUptimeMs = t
+        engine.showSystemUi()
+    }
+
+    private fun writeNow(target: Int) {
+        if (engine.writeUnits(target) == WriteResult.MODE_CHANGED) {
+            // Units changed meaning (e.g. 150 -> 15). Rebase; do not write the old target.
+            syncFromSystem()
+            onModeChanged?.invoke()
+        }
+    }
+
+    private class HandlerScheduler : CoalescingWriter.Scheduler {
+        private val handler = Handler(Looper.getMainLooper())
+        private val token = Any()
+
+        override fun schedule(delayMs: Long, action: () -> Unit) {
+            handler.postAtTime({ action() }, token, SystemClock.uptimeMillis() + delayMs)
+        }
+
+        override fun cancel() = handler.removeCallbacksAndMessages(token)
     }
 
     companion object {
         const val SHOW_UI_MIN_INTERVAL_MS: Long = 120L
+        /** About two display frames at 60 Hz; latest target wins. */
+        const val WRITE_INTERVAL_MS: Long = 30L
     }
 }
