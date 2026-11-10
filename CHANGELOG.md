@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.2 (versionCode 22)
+
+- New: the hardware volume buttons can move Samsung's fine media volume by a step you choose, from 1 to 15 fine units per press (default 1, shown as for example "1 of 150 per press"). This uses an accessibility service inside Volume Control that you turn on in Settings > Accessibility. It reads only the volume up and volume down buttons, asks for no accessibility events, and cannot read anything on screen.
+- Works only while the screen is on. With the screen off Android does not pass volume buttons to accessibility services, so they keep Android's normal steps.
+- The buttons are passed to Android unchanged when the in-app switch is off, on non-Samsung phones, when Samsung's fine methods are missing, when a fine read or write fails, and during a call, while ringing, or in a voice or video call app.
+- While the feature is on and the screen is on, the buttons always change media volume, even when nothing is playing.
+- Holding a button keeps stepping. Android's own key repeats are used when it sends them; otherwise the app repeats after about 0.5 s and then about every 50 ms. Each write asks Samsung to show its volume panel.
+- New settings card under the dial: an on/off row (it opens Accessibility settings when the service is not on) and a step slider. Settings are kept in SharedPreferences.
+- The dial follows button presses while the app is open and rebases when you return to it. The widget is unchanged.
+
 ## 1.0.1 (versionCode 21)
 
 - The dial face now has 50 ticks per turn, and every tick changes the volume. In Samsung fine mode one tick is one fine unit, so 150 units take 3 turns (turns = fine maximum / 50). Previously one turn was 10% of the range and most of the 100 marks did not change the volume.
