@@ -68,7 +68,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 Dial math coverage lives under `app/src/test/java/com/oiuy/volumecontrol/volume/`.
 
-Volume backend coverage lives in the same folder: `VolumeEngineTest` (mode choice, fallback, clamping, no public writes in fine mode), `CoalescingWriterTest` (latest-value coalescing), `MediaVolumeControllerTest` (fine mapping, widget steps, reads never write), `HapticUnitsTest` (one haptic tick per fine unit), and `VolumeSourceGuardTest` (platform volume writes and method lookups only in `AndroidVolumePorts.kt`, no restricted access techniques).
+Volume backend coverage lives in the same folder: `VolumeEngineTest` (mode choice, fallback, clamping, no public writes in fine mode), `CoalescingWriterTest` (latest-value coalescing), `MediaVolumeControllerTest` (50 units per turn, one write per tick, widget steps, reads never write), `TickDialTest` (50 ticks per turn, 3 turns at 150, fallback ticks, hard stops, magnet with a 2-tick deadzone), `HapticUnitsTest` (one haptic tick per unit, strong tick every full turn), and `VolumeSourceGuardTest` (platform volume writes and method lookups only in `AndroidVolumePorts.kt`, no restricted access techniques).
 
 Lint:
 

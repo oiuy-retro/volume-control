@@ -12,6 +12,8 @@ import android.os.SystemClock
  *
  * Keeps a fractional level so dial turns accumulate smoothly; writes only when
  * the rounded integer target changes, coalesced through [CoalescingWriter].
+ * One full dial turn is [unitsPerTurn] units ([TickDial]): every dial tick is
+ * one output unit.
  * [syncFromSystem] only reads.
  */
 class MediaVolumeController(
@@ -50,6 +52,12 @@ class MediaVolumeController(
 
     fun fractionalPercent(): Float = DialMath.fractionalPercentOf(fractionalLevel, maxUnits)
 
+    /** Raw fractional level in units (0..[maxUnits]). */
+    fun level(): Float = fractionalLevel
+
+    /** Units (and dial ticks) per full turn for the active mode. */
+    val unitsPerTurn: Int get() = TickDial.unitsPerTurn(mode)
+
     fun statusText(): String = volumeStatusText(mode, currentUnits, maxUnits, fallbackReason)
 
     /** Read only: drops any pending write and rebases on the system value. */
@@ -61,25 +69,15 @@ class MediaVolumeController(
     }
 
     /**
-     * Drive the output from a 0..100 display percent **without** moving the raw
-     * accumulator when [preserveRawAccumulator] is true (magnet overlay).
+     * Apply a dial rotation: one full turn = [unitsPerTurn] units. Writes only
+     * when the rounded unit changes. Returns the new raw level in units.
      */
-    fun setFractionalPercent(percent: Float, preserveRawAccumulator: Boolean): Float {
-        if (maxUnits <= 0) return 0f
-        val p = percent.coerceIn(0f, 100f)
-        val level = DialMath.clampFractional((p / 100f) * maxUnits.toFloat(), maxUnits)
-        writer.submit(DialMath.toStreamIndex(level, maxUnits))
-        if (!preserveRawAccumulator) fractionalLevel = level
-        return if (preserveRawAccumulator) p else fractionalPercent()
-    }
-
-    /** Apply a dial rotation. One full turn = 10% of [maxUnits]. Returns the raw percent. */
     fun adjustByDegrees(deltaDegrees: Float): Float {
-        if (deltaDegrees == 0f) return fractionalPercent()
-        val delta = DialMath.volumeDeltaFromDegrees(deltaDegrees, maxUnits)
-        fractionalLevel = DialMath.clampFractional(fractionalLevel + delta, maxUnits)
-        writer.submit(DialMath.toStreamIndex(fractionalLevel, maxUnits))
-        return fractionalPercent()
+        if (deltaDegrees == 0f) return fractionalLevel
+        val delta = TickDial.unitsFromDegrees(deltaDegrees, unitsPerTurn)
+        fractionalLevel = TickDial.clampLevel(fractionalLevel + delta, maxUnits)
+        writer.submit(TickDial.tickIndex(fractionalLevel, maxUnits))
+        return fractionalLevel
     }
 
     /** Write any coalesced target now (end of gesture). */

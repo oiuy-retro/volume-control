@@ -24,26 +24,58 @@ class MediaVolumeControllerTest {
     }
 
     @Test
-    fun fullTurnIsTenPercentOfFineMax() {
+    fun fullTurnIsFiftyFineUnits() {
         val fine = FakeFine(value = 60)
         val c = controller(FakeStream(), fine)
+        assertEquals(50, c.unitsPerTurn)
         c.adjustByDegrees(360f)
         c.flush()
-        assertEquals(75, c.currentUnits)
-        assertEquals(75, fine.writes.last())
+        assertEquals(110, c.currentUnits)
+        assertEquals(110, fine.writes.last())
+    }
+
+    @Test
+    fun turnsToCoverRangeFollowPublicMax() {
+        val stream = FakeStream(maxSteps = 15)
+        val fine = FakeFine(value = 0)
+        val c = controller(stream, fine)
+        assertEquals(3f, TickDial.turns(c.maxUnits, c.unitsPerTurn))
+        repeat(3) {
+            c.adjustByDegrees(360f)
+            c.flush()
+        }
+        assertEquals(150, c.currentUnits)
+        c.adjustByDegrees(360f)
+        c.flush()
+        assertEquals(150, c.currentUnits)
+        stream.maxSteps = 20
+        fine.value = 0
+        c.syncFromSystem()
+        assertEquals(4f, TickDial.turns(c.maxUnits, c.unitsPerTurn))
+    }
+
+    @Test
+    fun everyTickIsOneWrittenUnit() {
+        val fine = FakeFine(value = 0)
+        val c = controller(FakeStream(), fine)
+        repeat(50) {
+            c.adjustByDegrees(7.2f)
+            time.advance(100)
+        }
+        assertEquals((1..50).toList(), fine.writes)
     }
 
     @Test
     fun writesOnlyWhenIntegerTargetChanges() {
         val fine = FakeFine(value = 60)
         val c = controller(FakeStream(), fine)
-        // 24 degrees = exactly one fine unit at 150 units; 6 degrees = a quarter unit.
-        c.adjustByDegrees(6f)
+        // 7.2 degrees = one fine unit at 50 per turn; 1.8 degrees = a quarter unit.
+        c.adjustByDegrees(1.8f)
         time.advance(100)
         assertTrue(fine.writes.isEmpty())
-        c.adjustByDegrees(6f) // 0.5 unit -> rounds (half-even) to 60
+        c.adjustByDegrees(1.8f) // 0.5 unit -> rounds (half-even) to 60
         time.advance(100)
-        c.adjustByDegrees(6f) // 0.75 -> 61
+        c.adjustByDegrees(1.8f) // 0.75 -> 61
         time.advance(100)
         assertEquals(listOf(61), fine.writes)
     }
@@ -53,7 +85,7 @@ class MediaVolumeControllerTest {
         val fine = FakeFine(value = 60)
         val c = controller(FakeStream(), fine)
         repeat(10) {
-            c.adjustByDegrees(24f)
+            c.adjustByDegrees(7.2f)
             time.advance(4)
         }
         // Ten targets over 40 ms: first immediately, then at most one per 30 ms, latest wins.
@@ -107,9 +139,13 @@ class MediaVolumeControllerTest {
         val c = controller(stream, null, samsung = false)
         assertEquals(VolumeMode.ANDROID_STEPS, c.mode)
         assertEquals(15, c.maxUnits)
-        c.adjustByDegrees(360f) // +1.5 -> 8.5 rounds half-even to 8
+        assertEquals(5, c.unitsPerTurn)
+        c.adjustByDegrees(360f) // one turn = 5 public steps
         c.flush()
-        assertEquals(listOf(8), stream.writes)
+        assertEquals(listOf(12), stream.writes)
+        c.adjustByDegrees(72f) // one tick = one public step
+        c.flush()
+        assertEquals(listOf(12, 13), stream.writes)
         c.showSystemVolumeUi()
         assertEquals(1, stream.showUiCalls)
     }
@@ -121,7 +157,7 @@ class MediaVolumeControllerTest {
         val c = controller(stream, fine)
         var modeChanges = 0
         c.onModeChanged = { modeChanges++ }
-        c.adjustByDegrees(24f)
+        c.adjustByDegrees(7.2f)
         assertEquals(listOf(71), fine.writes)
         assertEquals(1, modeChanges)
         assertEquals(VolumeMode.ANDROID_STEPS, c.mode)
@@ -137,9 +173,9 @@ class MediaVolumeControllerTest {
     fun syncDropsPendingDragWrite() {
         val fine = FakeFine(value = 60)
         val c = controller(FakeStream(), fine)
-        c.adjustByDegrees(24f)
+        c.adjustByDegrees(7.2f)
         time.advance(5)
-        c.adjustByDegrees(48f)
+        c.adjustByDegrees(14.4f)
         fine.value = 100
         c.syncFromSystem()
         time.advance(100)
