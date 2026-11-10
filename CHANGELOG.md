@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.0 (versionCode 20)
+
+- First full release. Same app as 0.1.5-pre.2, which was tested on a Galaxy S24+ (SM-S926U, Android 17): the dial and widget drive Samsung's fine media volume (150 steps on that phone), with Android's whole volume steps as the fallback on other phones.
+- Version number changed to 1.0.0 (versionCode 20). No code changes from 0.1.5-pre.2.
+
+## 0.1.5 (versionCode 19, pre-release 0.1.5-pre.2)
+
+- The dial and widget are back, and on Samsung phones they drive Samsung's fine media volume (Android's media maximum times 10, 150 on a 15-step phone) through `semGetFineVolume(int)` / `semSetFineVolume(int, int, int)`, looked up with `Class.getMethod`.
+- One full turn is still 10% of the range. In fine mode each fine unit is one haptic tick and every 10% is a strong tick; the whole-percent magnet is unchanged.
+- Writes happen only when the whole fine unit changes, coalesced to the latest value at most about every 30 ms, and flushed when the finger lifts. The whole-step setter is never used in fine mode.
+- Opening or returning to the app, and volume broadcasts, only read the fine value to move the dial.
+- Widget + and − change 10% of the fine range; the widget percent comes from the fine value.
+- Falls back to Android's whole steps on other phones, when the methods are missing, or after any fine failure, with a status line under the dial.
+- Removed the diagnostic test screen; its result was verified on a Galaxy S24+ (SM-S926U, Android 17).
+- Fixed a lint error in the widget description string.
+
+## 0.1.5-pre.1 diagnostic (versionCode 18)
+
+- Replaced the main screen with a Samsung fine-volume diagnostic. It shows device and Android version, public media volume index, minimum, maximum, mute state and media output type, and the raw value from Samsung's `semGetFineVolume(int)` for music.
+- Added a "Test one fine step quieter" button. It is the only thing in this build that changes volume: each tap reads the current fine value and calls `semSetFineVolume(int, int, int)` once with that value minus one, then reads back. No automatic restore, retry, or fallback to normal volume steps.
+- The methods are looked up with `Class.getMethod` only on devices whose manufacturer is Samsung. Lookup and call failures are shown on screen.
+- The dial is not shown. The home-screen widget is read-only; the + and − actions of widgets placed by earlier builds do nothing.
+- Added the normal `MODIFY_AUDIO_SETTINGS` permission.
+- Built from `main`, not from the 0.1.4 gain experiment. No fine-step dial yet.
+
 ## Unreleased
 
 - Stationary bezel ticks: 100 fine marks stay fixed on the dial rim; only the knob and indicator rotate with volume.

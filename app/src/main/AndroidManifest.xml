@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Normal (install-time) permission. Samsung's own Music app declares it alongside its
+         fine-volume calls; the diagnostic declares it so a missing permission is not the cause
+         of a failed test. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <application
         android:allowBackup="true"

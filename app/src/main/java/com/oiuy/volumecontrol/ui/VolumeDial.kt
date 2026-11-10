@@ -67,15 +67,22 @@ fun VolumeDial(
     onDragStart: () -> Unit = {},
     onDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
+    /**
+     * Haptic detents. 0 = one fine tick per 0.1% (100 per turn), majors at whole
+     * percents. N > 0 = one fine tick per output unit of N (e.g. 150 Samsung
+     * fine units), majors at every 10% landmark.
+     */
+    hapticUnits: Int = 0,
 ) {
     val view = LocalView.current
     val context = LocalContext.current
     val tickHaptics = remember(context) { DialTickHaptics(context) }
     var lastAngle by remember { mutableFloatStateOf(Float.NaN) }
     var rawDragPercent by remember { mutableFloatStateOf(percent) }
-    var lastTick by remember { mutableIntStateOf(DialMath.tickIndexFromPercent(percent)) }
+    val latestUnits = rememberUpdatedState(hapticUnits)
+    var lastTick by remember { mutableIntStateOf(DialMath.hapticTick(percent, hapticUnits)) }
     var wasAtMajor by remember {
-        mutableStateOf(DialMath.isMajorTickIndex(DialMath.tickIndexFromPercent(percent)))
+        mutableStateOf(DialMath.isHapticMajor(DialMath.hapticTick(percent, hapticUnits), hapticUnits))
     }
     var lastSnappedWhole by remember { mutableFloatStateOf(Float.NaN) }
     var magnetHolding by remember { mutableStateOf(false) }
@@ -115,8 +122,8 @@ fun VolumeDial(
                         onDragStart = { offset ->
                             // Always seed from the raw accumulator, never a snapped display value.
                             rawDragPercent = latestRawPercent.value()
-                            lastTick = DialMath.tickIndexFromPercent(rawDragPercent)
-                            wasAtMajor = DialMath.isMajorTickIndex(lastTick)
+                            lastTick = DialMath.hapticTick(rawDragPercent, latestUnits.value)
+                            wasAtMajor = DialMath.isHapticMajor(lastTick, latestUnits.value)
                             lastSnappedWhole = Float.NaN
                             magnetHolding = false
                             latestOnDragStart.value()
@@ -161,12 +168,13 @@ fun VolumeDial(
                                     magnetHolding = magnet.holding
                                     latestOnReported.value(magnet.reportedPercent)
 
-                                    val tick = DialMath.tickIndexFromPercent(raw)
+                                    val units = latestUnits.value
+                                    val tick = DialMath.hapticTick(raw, units)
                                     val crossed = DialMath.ticksCrossed(lastTick, tick)
-                                    val nowAtMajor = DialMath.isMajorTickIndex(tick)
+                                    val nowAtMajor = DialMath.isHapticMajor(tick, units)
                                     val enteredMajor = nowAtMajor && !wasAtMajor
                                     val includesMajor =
-                                        crossed != 0 && DialMath.crossedIncludesMajor(lastTick, tick)
+                                        crossed != 0 && DialMath.crossedIncludesHapticMajor(lastTick, tick, units)
                                     if (crossed != 0) {
                                         val major = enteredMajor || includesMajor
                                         tickHaptics.onTickStep(view, crossed, major = major)
