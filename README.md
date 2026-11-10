@@ -16,7 +16,7 @@ On Samsung phones the dial drives Samsung's fine media volume, the finer setting
 
 Fallback: on other phones, when Samsung's methods are missing, or when a fine read or write fails, the app uses Android's normal whole volume steps for the rest of that session and the line under the dial says so and why.
 
-Caveat: Samsung's methods (`semGetFineVolume(int)` and `semSetFineVolume(int, int, int)`) are not part of a documented Android or Samsung SDK. The app looks them up with the ordinary `Class.getMethod` call and does not use hidden-API workarounds, root, Shizuku or audio effects. A Samsung update could remove or block them; the app then falls back as described. Verified on a Galaxy S24+ (SM-S926U) running Android 17 (API 37), build CP2A.260605.016.S926USQU6EZIF, with the 0.1.5-pre.1 diagnostic: both methods were found, the fine value ran from 150 to 0, and setting one unit lower worked.
+Caveat: Samsung's methods (`semGetFineVolume(int)` and `semSetFineVolume(int, int, int)`) are not part of a documented Android or Samsung SDK. The app looks them up with the ordinary `Class.getMethod` call and does not use hidden-API workarounds, root, Shizuku or audio effects. A Samsung update could remove or block them; the app then falls back as described. Verified on a Galaxy S24+ (SM-S926U) running Android 17 (API 37), build CP2A.260605.016.S926USQU6EZIF, with the 0.1.5-pre.1 diagnostic: both methods were found, the fine value ran from 150 to 0, and setting one unit lower worked. The fine dial itself (0.1.5-pre.2, the same code as 1.0.0 apart from the version number) was then tested on the same phone.
 
 ## Dial behavior
 
@@ -99,8 +99,8 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 ## Package
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
-- versionName: `0.1.5`
-- versionCode: `19`
+- versionName: `1.0.0`
+- versionCode: `20`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

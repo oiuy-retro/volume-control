@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0 (versionCode 20)
+
+- First full release. Same app as 0.1.5-pre.2, which was tested on a Galaxy S24+ (SM-S926U, Android 17): the dial and widget drive Samsung's fine media volume (150 steps on that phone), with Android's whole volume steps as the fallback on other phones.
+- Version number changed to 1.0.0 (versionCode 20). No code changes from 0.1.5-pre.2.
+
 ## 0.1.5 (versionCode 19, pre-release 0.1.5-pre.2)
 
 - The dial and widget are back, and on Samsung phones they drive Samsung's fine media volume (Android's media maximum times 10, 150 on a 15-step phone) through `semGetFineVolume(int)` / `semSetFineVolume(int, int, int)`, looked up with `Class.getMethod`.
