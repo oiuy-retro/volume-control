@@ -20,5 +20,8 @@ interface FineVolumePort {
     /** Whether the getter and setter were found. Must not call either. */
     fun availability(): PortResult<Unit>
     fun readFine(): PortResult<Int>
-    fun stepTo(index: Int): PortResult<Unit>
+    /** Write with flags 0 (no system volume panel). Used by the dial and widget. */
+    fun stepTo(index: Int): PortResult<Unit> = stepTo(index, 0)
+    /** Write with Samsung's flags argument, for example [VolumeButtonSteps.FLAG_SHOW_UI]. */
+    fun stepTo(index: Int, flags: Int): PortResult<Unit>
 }

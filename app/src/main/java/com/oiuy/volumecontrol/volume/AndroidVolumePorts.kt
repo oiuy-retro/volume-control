@@ -103,10 +103,10 @@ class ReflectiveSamsungFineVolumePort(context: Context) : FineVolumePort {
         }
     }
 
-    override fun stepTo(index: Int): PortResult<Unit> {
+    override fun stepTo(index: Int, flags: Int): PortResult<Unit> {
         val method = setter ?: return PortResult.Failed(lookupError ?: "Unavailable.")
         return guarded {
-            method.invoke(audioManager, AudioManager.STREAM_MUSIC, index, 0)
+            method.invoke(audioManager, AudioManager.STREAM_MUSIC, index, flags)
             PortResult.Ok(Unit)
         }
     }
