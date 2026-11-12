@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Volume key filtering only. canRequestFilterKeyEvents grants the capability, but
+     flagRequestFilterKeyEvents is left out of accessibilityFlags on purpose: the service
+     turns it on at runtime only while the screen is on, the in-app switch is on and Samsung
+     fine volume is available, so it starts without filtering. accessibilityEventTypes is left
+     out (no event types are requested), packageNames limits any event to this app, and window
+     content cannot be retrieved. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canRequestFilterKeyEvents="true"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/volume_button_service_description"
+    android:isAccessibilityTool="false"
+    android:notificationTimeout="0"
+    android:packageNames="com.oiuy.volumecontrol"
+    android:settingsActivity="com.oiuy.volumecontrol.MainActivity"
+    android:summary="@string/volume_button_service_summary"
+    tools:ignore="UnusedAttribute" />

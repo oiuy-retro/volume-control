@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 (versionCode 27, pre-release 1.0.2-pre.5)
+
+- Combines the volume button feature (1.0.2-pre.1 to pre.4, now on main) with the major-mark dial fix from 1.0.1-pre.2. The changes are the same as in those builds, listed below.
+- versionCode 27 installs over both 1.0.1-pre.2 (26) and 1.0.2-pre.4 (25).
+
 ## 1.0.1 (versionCode 26, pre-release 1.0.1-pre.2)
 
 - Fixed: since the 50-tick dial, only the twelve o'clock mark had a magnet snap and a strong haptic. The other major marks drawn on the bezel (every 5 fine units, 10 per turn, every 36°) had neither. The magnet was attached to every single unit tick with a ±0.1-unit zone, and its 2-tick deadzone after each tiny snap usually blocked the major marks. The strong haptic only fired at full turns.
@@ -7,6 +12,36 @@
 - A strong haptic now plays on landing on or crossing every major mark, twelve o'clock included.
 - The major marks, magnet and haptic all come from one constant, so they cannot drift apart. Android-steps mode is unchanged (a magnet on every step, strong haptic at each full turn).
 - versionCode 26 is higher than the 1.0.2 test builds (22 to 25), so it installs over them. It does not include the volume button feature from 1.0.2-pre.x.
+
+## 1.0.2 (versionCode 25, pre-release 1.0.2-pre.4)
+
+- Fixed: the volume buttons broke Samsung's Separate app sound. With an app assigned to the phone speaker and music on Bluetooth, the service always wrote the default (Bluetooth) fine volume. Now each new press first checks where media is playing, using `AudioManager.getActivePlaybackConfigurations()` with each playback's output device (Android 12+) and `getAudioDevicesForAttributes()` for the default media output (Android 13+). The press goes to Samsung's normal handling if media plays on two or more output types, or on an output other than the default. Only media and game usages count. When the device information is missing, it falls back to the earlier behavior unless the outputs are clearly mixed.
+- The decision is made once per press on its first DOWN and kept for that press's repeats and UP. Repeat ticks do not re-read the playback list.
+- Limits: Android's public playback list can include paused players, so a paused video whose app keeps its player open may still count. The app cannot see which app is in focus.
+
+## 1.0.2 (versionCode 24, pre-release 1.0.2-pre.3)
+
+- Fixed (second attempt): screen-off volume buttons stopped working while the accessibility service was on, even with the in-app switch off. On the Galaxy S24+ it is the key filter itself that breaks them. The service now starts without key filtering (`flagRequestFilterKeyEvents` is no longer in the XML flags; `canRequestFilterKeyEvents` stays) and turns filtering on at runtime with `setServiceInfo` only while the screen is fully on, the switch is on, and Samsung fine volume is available. It turns filtering off on screen off, when the switch is turned off (right away, through a preference listener), and when fine volume is missing. It watches the screen-off, screen-on and unlock broadcasts and display changes, and it checks again when it connects and on every key.
+- Removed the 1.0.2-pre.2 screen-off fallback, which made Android's one-step change itself. A key that arrives while filtering should be off goes straight back to Android.
+- The press pairing and repeat fixes from pre.2 are kept.
+- The in-app note and the service description now say to turn the service off in Accessibility settings if screen-off buttons still misbehave.
+
+## 1.0.2 (versionCode 23, pre-release 1.0.2-pre.2)
+
+- Fixed: with the screen off, the volume buttons did nothing while the accessibility service was on (1.0.2-pre.1). The service already handed those presses back to Android, but on the Galaxy S24+ a handed-back screen-off press was lost. Now a screen-off press that reaches the service makes Android's normal one-step change: media volume while something plays, call volume during a call. With nothing playing and no call it is still handed back. Fine steps remain screen-on only.
+- The screen counts as on only when Android reports it is interactive and the display is fully on (not off, doze, or Always On Display). This is checked on every key event, not cached.
+- A held button's app repeat stops as soon as the screen turns off. A held press whose screen turned off part-way no longer makes fine steps.
+- Presses are paired by their down time. An UP is consumed only when its own DOWN was consumed, and repeats or an UP from a press whose first DOWN the service never saw go to Android, so a press whose UP was lost can no longer block later presses.
+
+## 1.0.2 (versionCode 22, pre-release 1.0.2-pre.1)
+
+- New: the hardware volume buttons can move Samsung's fine media volume by a step you choose, from 1 to 15 fine units per press (default 1, shown as for example "1 of 150 per press"). This uses an accessibility service inside Volume Control that you turn on in Settings > Accessibility. It reads only the volume up and volume down buttons, asks for no accessibility events, and cannot read anything on screen.
+- Works only while the screen is on. With the screen off Android does not pass volume buttons to accessibility services, so they keep Android's normal steps.
+- The buttons are passed to Android unchanged when the in-app switch is off, on non-Samsung phones, when Samsung's fine methods are missing, when a fine read or write fails, and during a call, while ringing, or in a voice or video call app.
+- While the feature is on and the screen is on, the buttons always change media volume, even when nothing is playing.
+- Holding a button keeps stepping. Android's own key repeats are used when it sends them; otherwise the app repeats after about 0.5 s and then about every 50 ms. Each write asks Samsung to show its volume panel.
+- New settings card under the dial: an on/off row (it opens Accessibility settings when the service is not on) and a step slider. Settings are kept in SharedPreferences.
+- The dial follows button presses while the app is open and rebases when you return to it. The widget is unchanged.
 
 ## 1.0.1 (versionCode 21)
 

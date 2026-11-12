@@ -26,6 +26,7 @@ class FakeFine(
     var writeFailure: String? = null,
 ) : FineVolumePort {
     val writes = mutableListOf<Int>()
+    val writeFlags = mutableListOf<Int>()
     var reads = 0
     override fun availability(): PortResult<Unit> =
         if (available) PortResult.Ok(Unit) else PortResult.Failed("Method not found")
@@ -34,8 +35,9 @@ class FakeFine(
         readFailure?.let { return PortResult.Failed(it) }
         return PortResult.Ok(value)
     }
-    override fun stepTo(index: Int): PortResult<Unit> {
+    override fun stepTo(index: Int, flags: Int): PortResult<Unit> {
         writes += index
+        writeFlags += flags
         writeFailure?.let { return PortResult.Failed(it) }
         value = index
         return PortResult.Ok(Unit)

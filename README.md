@@ -18,6 +18,21 @@ Fallback: on other phones, when Samsung's methods are missing, or when a fine re
 
 Caveat: Samsung's methods (`semGetFineVolume(int)` and `semSetFineVolume(int, int, int)`) are not part of a documented Android or Samsung SDK. The app looks them up with the ordinary `Class.getMethod` call and does not use hidden-API workarounds, root, Shizuku or audio effects. A Samsung update could remove or block them; the app then falls back as described. Verified on a Galaxy S24+ (SM-S926U) running Android 17 (API 37), build CP2A.260605.016.S926USQU6EZIF, with the 0.1.5-pre.1 diagnostic: both methods were found, the fine value ran from 150 to 0, and setting one unit lower worked. The fine dial itself (0.1.5-pre.2, the same code as 1.0.0 apart from the version number) was then tested on the same phone.
 
+## Volume buttons
+
+Volume Control can take over how far the phone's volume up and volume down buttons move media volume, on Samsung phones with fine volume.
+
+- Pick a step from 1 to 15 fine units per press in the card under the dial. The label shows it against the phone's fine maximum, for example `1 of 150 per press`. The default is 1, the same size as one dial tick.
+- This uses an accessibility service called Volume Control buttons. Turn it on in Settings > Accessibility (tapping the card's on/off row when it is off opens that screen). Android shows its usual accessibility warning when you turn it on. The service reads only the volume up and volume down buttons. It asks for no accessibility events and cannot read anything on screen, other keys, or what you type.
+- Fine steps work only while the screen is on. The app treats the screen as on only when Android reports it is interactive and the display is fully on, so Always On Display and doze count as off. It checks this on every button press.
+- Key filtering is switched on only while it is needed. The service starts with it off and turns it on only while the screen is fully on, the card's switch is on, and Samsung fine volume is available. It turns it off again when the screen turns off, when the switch is turned off, or when fine volume is missing. It watches the screen-off, screen-on and unlock broadcasts and display state changes, and it rechecks on every key. On the Galaxy S24+, having key filtering on with the screen off broke the volume buttons, whatever the service did with the presses, so with the screen off the service now does not ask for the buttons at all and Android handles them as usual. Any button press that still reaches the service while filtering should be off goes straight back to Android.
+- If the volume buttons still misbehave with the screen off, turn off Volume Control buttons in Settings > Accessibility. The dial and widget keep working without it.
+- Each press reads Samsung's fine value, moves it by the step, keeps it between 0 and the fine maximum, and writes it with Samsung's fine setter. It asks Samsung to show its volume panel on each write. Holding a button keeps stepping: Android's own key repeats are used when it sends them, otherwise the app repeats after about 0.5 s and then about every 50 ms.
+- Samsung's Separate app sound: if an app is playing on a different output than the rest of your media, for example a browser video on the phone speaker while music plays over Bluetooth, the presses go to Samsung's normal steps, so Samsung decides which output they change. At each new press the app checks which outputs media is playing on, using Android's public playback list, and hands the press back if media is playing on two or more outputs, or on an output that is not the default media output. Notification, touch and alarm sounds are not counted. This needs Android 12 or later (Android 13 or later to know the default output). A paused video may still count as playing if the app keeps its player open, and the app cannot tell which app is in focus. Once a press is decided, its repeats keep the same decision.
+- With the screen on, the buttons go back to Android's normal behavior when the card's switch is off, on phones without Samsung fine volume, when a fine read or write fails, and during a call, while ringing, or while a voice or video call app is active.
+- While it is on and the screen is on, the buttons change media volume even when nothing is playing (Android would otherwise change ring volume in that case on some settings).
+- The switch and step are stored on the phone in the app's SharedPreferences.
+
 ## Dial behavior
 
 - Gesture tracking is relative to the dial center.
@@ -92,14 +107,15 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 - Samsung fine volume relies on undocumented Samsung methods (see above).
 
 - The home-screen widget cannot implement continuous dial rotation; only tap and ±10% actions are supported.
+- The volume button step works only while the screen is on, only with Samsung fine volume, and only after you turn on its accessibility service.
 - Without Samsung fine volume, the media step count is device-dependent (often around 15 steps); the dial then has 5 ticks per turn, one per whole step.
 - Dynamic color (Material You) requires API 31+. Older devices use the expressive light scheme or the dark color scheme.
 
 ## Package
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
-- versionName: `1.0.1`
-- versionCode: `26`
+- versionName: `1.0.2`
+- versionCode: `27`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 
