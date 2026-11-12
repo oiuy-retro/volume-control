@@ -7,7 +7,7 @@ A Material 3 Expressive Android app with a large centered dial that changes medi
 On Samsung phones the dial drives Samsung's fine media volume, the finer setting that Samsung's own volume bar uses, instead of Android's whole volume steps.
 
 - Fine range is Android's media maximum times 10. On a phone with 15 media steps that is 0 to 150. The app computes it from the phone; it is not fixed in the code.
-- Each tick on the dial is one fine unit and one light haptic tick. One full turn is 50 fine units, with a strong tick at every full turn (0, 50, 100, 150). Number of turns = fine maximum / 50, so 3 turns at 150.
+- Each tick on the dial is one fine unit and one light haptic tick. One full turn is 50 fine units, with a strong tick at every major mark: every 5 fine units (10 per turn, every 36°), which includes each full turn (0, 50, 100, 150). Number of turns = fine maximum / 50, so 3 turns at 150.
 - The app writes a new fine value only when the whole fine unit under the dial changes, at most about once every 30 ms while dragging, always the latest value. It never uses Android's whole-step setter in this mode, because that would round the value to a whole step.
 - Opening the app, returning to it, and volume changes from elsewhere only read the fine value to move the dial.
 - The widget + and − buttons change the fine value by 10% of the range (15 units on a 15-step phone). The widget percent comes from the fine value.
@@ -22,11 +22,11 @@ Caveat: Samsung's methods (`semGetFineVolume(int)` and `semSetFineVolume(int, in
 
 - Gesture tracking is relative to the dial center.
 - Volume delta: `(degrees / 360) * ticksPerTurn` units. In Samsung fine mode ticksPerTurn is 50 fine units (7.2° per tick). In Android-steps mode it is 5 whole steps (72° per tick), so every mark is a real step there too and the number of turns to cover the range is about the same.
-- A stationary bezel draws one mark per tick (50 in fine mode, 5 in Android-steps mode). Twelve o'clock is emphasized; in fine mode every 5th mark is longer. The marks do not rotate with the knob.
+- A stationary bezel draws one mark per tick (50 in fine mode, 5 in Android-steps mode). Twelve o'clock is emphasized; in fine mode every 5th mark is a longer major mark (10 per turn). The marks do not rotate with the knob.
 - Only the knob and indicator rotate. The indicator shows the position within the current turn and points at twelve o'clock at each full turn. The arc around the dial shows progress over the whole range. The dial stops at 0 and at the maximum.
 - The volume written is the whole unit under the dial, so the value changes exactly as a tick passes.
-- A small magnet (±0.1 tick) can hold the drawn indicator on a tick when the finger stops close to it or a fast frame sweeps across it. After snapping, it will not snap again until the finger has moved 2 ticks (2 fine units, 14.4°) away from that tick. The magnet only affects drawing, never the value written.
-- Tick haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) plus a light 5 ms / amplitude 65 vibrator one-shot. Full-turn majors use `LONG_PRESS` plus a 28 ms / amplitude 255 one-shot. At most one pulse per input frame. Light ticks are rate-limited (~12 ms) and are suppressed for 28 ms after a major so they cannot cut the major short. The app requests the `VIBRATE` permission for this.
+- In fine mode a magnet pulls the drawn indicator onto the major marks (every 5 fine units, plus 0 and the maximum). It catches within ±0.5 units (±3.6°, the same angle as the magnet before the 50-tick dial) when the finger stops close to a major mark or a fast frame sweeps across one. Minor marks have no magnet. After snapping, it will not snap again until the finger has moved 2 ticks (2 fine units, 14.4°) away. In Android-steps mode every step keeps a small magnet (±0.1 step). The magnet only affects drawing, never the value written.
+- Tick haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) plus a light 5 ms / amplitude 65 vibrator one-shot. Major marks (every 5 fine units in fine mode, every full turn in Android-steps mode) use `LONG_PRESS` plus a 28 ms / amplitude 255 one-shot. At most one pulse per input frame. Light ticks are rate-limited (~12 ms) and are suppressed for 28 ms after a major so they cannot cut the major short. The app requests the `VIBRATE` permission for this.
 - The center readout shows the volume as a percent to one decimal place, updating on every tick (one fine tick is about 0.7% at 150 units).
 - In Android-steps mode, crossing a tick also brings up the Android system media-volume panel (`AudioManager.FLAG_SHOW_UI`), rate-limited to about once every 120 ms. In Samsung fine mode the panel is not opened, and haptic ticks follow fine units as described above.
 
@@ -99,7 +99,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
 - versionName: `1.0.1`
-- versionCode: `21`
+- versionCode: `26`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

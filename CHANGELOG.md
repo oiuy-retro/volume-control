@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 (versionCode 26, pre-release 1.0.1-pre.2)
+
+- Fixed: since the 50-tick dial, only the twelve o'clock mark had a magnet snap and a strong haptic. The other major marks drawn on the bezel (every 5 fine units, 10 per turn, every 36°) had neither. The magnet was attached to every single unit tick with a ±0.1-unit zone, and its 2-tick deadzone after each tiny snap usually blocked the major marks. The strong haptic only fired at full turns.
+- The magnet now snaps only to the major marks (every 5 fine units, plus 0 and the maximum), catching within ±0.5 units (±3.6°, the same angle as before the 50-tick dial), with the same 2-tick deadzone after a jump.
+- A strong haptic now plays on landing on or crossing every major mark, twelve o'clock included.
+- The major marks, magnet and haptic all come from one constant, so they cannot drift apart. Android-steps mode is unchanged (a magnet on every step, strong haptic at each full turn).
+- versionCode 26 is higher than the 1.0.2 test builds (22 to 25), so it installs over them. It does not include the volume button feature from 1.0.2-pre.x.
+
 ## 1.0.1 (versionCode 21)
 
 - The dial face now has 50 ticks per turn, and every tick changes the volume. In Samsung fine mode one tick is one fine unit, so 150 units take 3 turns (turns = fine maximum / 50). Previously one turn was 10% of the range and most of the 100 marks did not change the volume.
