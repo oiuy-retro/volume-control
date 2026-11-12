@@ -154,6 +154,7 @@ fun VolumeDial(
                                         raw = raw,
                                         lastSnapped = lastSnapped,
                                         holding = magnetHolding,
+                                        unitsPerTurn = perTurn,
                                         maxUnits = max,
                                     )
                                     lastSnapped = magnet.lastSnapped
@@ -198,8 +199,9 @@ fun VolumeDial(
             val noonInner = radius * 0.80f
             for (i in 0 until marks) {
                 val noon = i == 0
-                // Longer reference mark every 5 units when a turn has more than 5.
-                val major = marks > BEZEL_GROUP && i % BEZEL_GROUP == 0
+                // Longer major mark every TickDial.MAJOR_MARK_SPACING_UNITS units when a turn has
+                // more marks than that. The magnet and strong haptic use the same marks.
+                val major = TickDial.isDrawnMajorMark(i, marks)
                 val rad = Math.toRadians((i * markDegrees - 90f).toDouble())
                 val cx = cos(rad).toFloat()
                 val cy = sin(rad).toFloat()
@@ -261,8 +263,6 @@ fun VolumeDial(
         )
     }
 }
-
-private const val BEZEL_GROUP = 5
 
 /** One decimal place. */
 internal fun formatFinePercent(percent: Float): String {

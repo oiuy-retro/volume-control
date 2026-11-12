@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.2 (versionCode 27, pre-release 1.0.2-pre.5)
+
+- Combines the volume button feature (1.0.2-pre.1 to pre.4, now on main) with the major-mark dial fix from 1.0.1-pre.2. The changes are the same as in those builds, listed below.
+- versionCode 27 installs over both 1.0.1-pre.2 (26) and 1.0.2-pre.4 (25).
+
+## 1.0.1 (versionCode 26, pre-release 1.0.1-pre.2)
+
+- Fixed: since the 50-tick dial, only the twelve o'clock mark had a magnet snap and a strong haptic. The other major marks drawn on the bezel (every 5 fine units, 10 per turn, every 36°) had neither. The magnet was attached to every single unit tick with a ±0.1-unit zone, and its 2-tick deadzone after each tiny snap usually blocked the major marks. The strong haptic only fired at full turns.
+- The magnet now snaps only to the major marks (every 5 fine units, plus 0 and the maximum), catching within ±0.5 units (±3.6°, the same angle as before the 50-tick dial), with the same 2-tick deadzone after a jump.
+- A strong haptic now plays on landing on or crossing every major mark, twelve o'clock included.
+- The major marks, magnet and haptic all come from one constant, so they cannot drift apart. Android-steps mode is unchanged (a magnet on every step, strong haptic at each full turn).
+- versionCode 26 is higher than the 1.0.2 test builds (22 to 25), so it installs over them. It does not include the volume button feature from 1.0.2-pre.x.
+
 ## 1.0.2 (versionCode 25, pre-release 1.0.2-pre.4)
 
 - Fixed: the volume buttons broke Samsung's Separate app sound. With an app assigned to the phone speaker and music on Bluetooth, the service always wrote the default (Bluetooth) fine volume. Now each new press first checks where media is playing, using `AudioManager.getActivePlaybackConfigurations()` with each playback's output device (Android 12+) and `getAudioDevicesForAttributes()` for the default media output (Android 13+). The press goes to Samsung's normal handling if media plays on two or more output types, or on an output other than the default. Only media and game usages count. When the device information is missing, it falls back to the earlier behavior unless the outputs are clearly mixed.

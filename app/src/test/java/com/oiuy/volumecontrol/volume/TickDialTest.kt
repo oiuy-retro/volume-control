@@ -70,59 +70,123 @@ class TickDialTest {
         assertEquals(18f, previousDegrees, eps)
     }
 
+    private fun magnet(prev: Float, raw: Float, latch: Float = Float.NaN, holding: Boolean = false, perTurn: Int = 50, max: Int = 150) =
+        TickDial.resolveMagnet(prev, raw, latch, holding, perTurn, max)
+
     @Test
-    fun magnetSnapsInZoneOntoTicks() {
-        val r = TickDial.resolveMagnet(9.8f, 10.05f, Float.NaN, false, 150)
+    fun magnetZoneIsScaledFromThePreviousDial() {
+        assertEquals(0.5f, TickDial.magnetZoneUnits(50), eps)
+        // ±3.6 degrees, the same angle as the old ±0.1% around whole-percent majors.
+        assertEquals(3.6f, TickDial.magnetZoneUnits(50) * TickDial.degreesPerTick(50), eps)
+        assertEquals(3.6f, 0.1f / 10f * 360f, eps)
+        // Android steps keep the per-step magnet.
+        assertEquals(0.1f, TickDial.magnetZoneUnits(5), eps)
+    }
+
+    @Test
+    fun magnetSnapsToEveryMajorWithinATurn() {
+        for (m in listOf(5, 10, 15, 20, 25, 30, 35, 40, 45)) {
+            val up = magnet(m - 0.8f, m - 0.4f)
+            assertEquals("approach $m from below", m.toFloat(), up.reportedLevel, eps)
+            assertTrue(up.holding)
+            val down = magnet(m + 0.9f, m + 0.45f)
+            assertEquals("approach $m from above", m.toFloat(), down.reportedLevel, eps)
+        }
+    }
+
+    @Test
+    fun magnetSnapsToMajorsAcrossTurns() {
+        for (m in listOf(55, 60, 85, 140, 145)) {
+            assertEquals(m.toFloat(), magnet(m - 1f, m + 0.3f).reportedLevel, eps)
+        }
+    }
+
+    @Test
+    fun noRegressionAtFullTurnsAndEnds() {
+        for (m in listOf(0, 50, 100, 150)) {
+            val r = magnet((m + 0.8f).coerceAtMost(150f), (m + 0.2f).coerceAtMost(150f))
+            assertEquals(m.toFloat(), r.reportedLevel, eps)
+        }
+        assertEquals(150f, magnet(149.2f, 149.7f).reportedLevel, eps)
+        assertEquals(0f, magnet(0.8f, 0.3f).reportedLevel, eps)
+    }
+
+    @Test
+    fun minorTicksDoNotSnap() {
+        for (raw in listOf(11.05f, 12.0f, 13.1f, 61.0f, 148.0f)) {
+            val r = magnet(raw - 0.2f, raw)
+            assertEquals(raw, r.reportedLevel, eps)
+            assertFalse(r.holding)
+            assertTrue(r.lastSnapped.isNaN())
+        }
+    }
+
+    @Test
+    fun topEndThatIsNotOnAMarkStillSnaps() {
+        assertEquals(142f, magnet(141.5f, 141.7f, max = 142).reportedLevel, eps)
+        assertEquals(140f, magnet(140.8f, 140.4f, max = 142).reportedLevel, eps)
+    }
+
+    @Test
+    fun fastSweepCapturesTheFirstCrossedMajorOnce() {
+        val r = magnet(8.4f, 13.4f)
         assertEquals(10f, r.reportedLevel, eps)
-        assertTrue(r.holding)
-        val far = TickDial.resolveMagnet(10.2f, 10.4f, Float.NaN, false, 150)
-        assertEquals(10.4f, far.reportedLevel, eps)
-        assertFalse(far.holding)
-    }
-
-    @Test
-    fun noResnapUntilRawMovesTwoTicksAway() {
-        var r = TickDial.resolveMagnet(9.8f, 10.0f, Float.NaN, false, 150)
         assertEquals(10f, r.lastSnapped, eps)
-        // Leave the zone and pass tick 11: still inside the 2-tick deadzone, no snap.
-        r = TickDial.resolveMagnet(10.0f, 11.0f, r.lastSnapped, r.holding, 150)
-        assertEquals(11.0f, r.reportedLevel, eps)
-        assertEquals(10f, r.lastSnapped, eps)
-        r = TickDial.resolveMagnet(11.0f, 11.9f, r.lastSnapped, r.holding, 150)
-        assertEquals(11.9f, r.reportedLevel, eps)
-        assertEquals(10f, r.lastSnapped, eps)
-        // Two ticks away from 10 clears the latch; tick 12 can snap.
-        r = TickDial.resolveMagnet(11.9f, 12.0f, r.lastSnapped, r.holding, 150)
-        assertEquals(12f, r.reportedLevel, eps)
-        assertEquals(12f, r.lastSnapped, eps)
-    }
-
-    @Test
-    fun deadzoneAppliesInBothDirections() {
-        var r = TickDial.resolveMagnet(20.3f, 20.0f, Float.NaN, false, 150)
-        assertEquals(20f, r.lastSnapped, eps)
-        r = TickDial.resolveMagnet(20.0f, 19.0f, r.lastSnapped, r.holding, 150)
-        assertEquals(19.0f, r.reportedLevel, eps)
-        r = TickDial.resolveMagnet(19.0f, 18.0f, r.lastSnapped, r.holding, 150)
-        assertEquals(18f, r.lastSnapped, eps)
-    }
-
-    @Test
-    fun fastSweepCapturesFirstCrossedTickOnce() {
-        val r = TickDial.resolveMagnet(10.4f, 13.4f, Float.NaN, false, 150)
-        assertEquals(11f, r.reportedLevel, eps)
-        assertEquals(11f, r.lastSnapped, eps)
         assertFalse(r.holding)
-        // Next frame continues raw: 13.6 is 2.6 ticks from 11, latch clears, no tick in zone.
-        val next = TickDial.resolveMagnet(13.4f, 13.6f, r.lastSnapped, r.holding, 150)
+        // 13.6 is more than 2 units from 10: latch clears, no major in zone, no snap.
+        val next = magnet(13.4f, 13.6f, r.lastSnapped, r.holding)
         assertEquals(13.6f, next.reportedLevel, eps)
+        // A sweep across only minors does not snap.
+        assertEquals(13.9f, magnet(11.2f, 13.9f).reportedLevel, eps)
     }
 
     @Test
-    fun magnetStaysInRange() {
-        val top = TickDial.resolveMagnet(149.8f, 150f, Float.NaN, false, 150)
-        assertEquals(150f, top.reportedLevel, eps)
-        val bottom = TickDial.resolveMagnet(0.3f, 0f, Float.NaN, false, 150)
-        assertEquals(0f, bottom.reportedLevel, eps)
+    fun holdsWhileInsideTheZone() {
+        var r = magnet(19.0f, 19.6f)
+        assertEquals(20f, r.reportedLevel, eps)
+        r = magnet(19.6f, 20.4f, r.lastSnapped, r.holding)
+        assertEquals(20f, r.reportedLevel, eps)
+        assertTrue(r.holding)
+        r = magnet(20.4f, 20.8f, r.lastSnapped, r.holding)
+        assertEquals(20.8f, r.reportedLevel, eps)
+        assertFalse(r.holding)
+    }
+
+    @Test
+    fun deadzoneAfterAJumpIsTwoTicks() {
+        var r = magnet(9.0f, 9.6f)
+        assertEquals(10f, r.lastSnapped, eps)
+        // Leave the zone, then come back toward 10 without going 2 units away: no re-snap.
+        r = magnet(9.6f, 11.5f, r.lastSnapped, r.holding)
+        assertEquals(11.5f, r.reportedLevel, eps)
+        assertEquals(10f, r.lastSnapped, eps)
+        r = magnet(11.5f, 10.3f, r.lastSnapped, r.holding)
+        assertEquals(10.3f, r.reportedLevel, eps)
+        assertEquals(10f, r.lastSnapped, eps)
+        // Move 2 units away, latch clears, then 15 can snap.
+        r = magnet(10.3f, 12.1f, r.lastSnapped, r.holding)
+        assertTrue(r.lastSnapped.isNaN())
+        r = magnet(12.1f, 14.6f, r.lastSnapped, r.holding)
+        assertEquals(15f, r.reportedLevel, eps)
+    }
+
+    @Test
+    fun deadzoneBlocksAQuickReturnSweep() {
+        // Snap to 10 by sweep, swing back across 10 within 2 units: no new snap.
+        var r = magnet(8.0f, 10.2f)
+        assertEquals(10f, r.lastSnapped, eps)
+        r = magnet(10.2f, 11.4f, r.lastSnapped, r.holding)
+        r = magnet(11.4f, 9.2f, r.lastSnapped, r.holding)
+        assertEquals(9.2f, r.reportedLevel, eps)
+    }
+
+    @Test
+    fun androidStepsKeepsTheMagnetOnEveryStep() {
+        val r = magnet(6.8f, 7.05f, perTurn = 5, max = 15)
+        assertEquals(7f, r.reportedLevel, eps)
+        val far = magnet(7.2f, 7.4f, perTurn = 5, max = 15)
+        assertEquals(7.4f, far.reportedLevel, eps)
+        assertTrue(TickDial.isMagnetMark(7, 5, 15))
+        assertFalse(TickDial.isMagnetMark(7, 50, 150))
     }
 }

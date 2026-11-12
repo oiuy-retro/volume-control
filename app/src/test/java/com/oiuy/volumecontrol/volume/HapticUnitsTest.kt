@@ -16,17 +16,38 @@ class HapticUnitsTest {
     }
 
     @Test
-    fun majorsAtEveryFullTurnOfFifty() {
+    fun strongHapticAtEveryDrawnMajorMark() {
         val majors = (0..150).filter { TickDial.isMajorTick(it, 50, 150) }
-        assertEquals(listOf(0, 50, 100, 150), majors)
+        assertEquals((0..150 step 5).toList(), majors)
+        // Full turns (twelve o'clock) are still majors.
+        for (t in listOf(0, 50, 100, 150)) assertTrue(TickDial.isMajorTick(t, 50, 150))
+        for (t in listOf(5, 10, 15, 20, 25, 30, 35, 40, 45, 55, 145)) assertTrue(TickDial.isMajorTick(t, 50, 150))
+        for (t in listOf(1, 4, 6, 49, 51, 144, 149)) assertFalse(TickDial.isMajorTick(t, 50, 150))
+        // Landing on or crossing a major.
+        assertTrue(TickDial.crossedIncludesMajor(9, 10, 50, 150))
+        assertTrue(TickDial.crossedIncludesMajor(13, 16, 50, 150))
+        assertTrue(TickDial.crossedIncludesMajor(56, 54, 50, 150))
         assertTrue(TickDial.crossedIncludesMajor(49, 51, 50, 150))
-        assertFalse(TickDial.crossedIncludesMajor(51, 60, 50, 150))
+        assertFalse(TickDial.crossedIncludesMajor(11, 14, 50, 150))
+        assertFalse(TickDial.crossedIncludesMajor(10, 14, 50, 150))
     }
 
     @Test
-    fun topEndIsMajorEvenWhenNotAWholeTurn() {
-        assertTrue(TickDial.isMajorTick(140, 50, 140))
-        assertFalse(TickDial.isMajorTick(139, 50, 140))
+    fun majorsMatchTheDrawnBezel() {
+        val drawn = (0 until 50).filter { TickDial.isDrawnMajorMark(it, 50) }
+        assertEquals(10, drawn.size)
+        assertEquals((0 until 50 step TickDial.MAJOR_MARK_SPACING_UNITS).toList(), drawn)
+        assertEquals(36f, TickDial.MAJOR_MARK_SPACING_UNITS * TickDial.degreesPerTick(50), 1e-4f)
+        for (t in 0..150) {
+            assertEquals(TickDial.isDrawnMajorMark(t % 50, 50) || t == 150, TickDial.isMajorTick(t, 50, 150))
+        }
+    }
+
+    @Test
+    fun topEndIsMajorEvenWhenNotOnAMark() {
+        assertTrue(TickDial.isMajorTick(142, 50, 142))
+        assertFalse(TickDial.isMajorTick(141, 50, 142))
+        assertTrue(TickDial.isMajorTick(140, 50, 142))
     }
 
     @Test
