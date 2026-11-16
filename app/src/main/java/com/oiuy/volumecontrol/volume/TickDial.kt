@@ -20,8 +20,19 @@ object TickDial {
     const val FINE_UNITS_PER_TURN: Int = 50
     const val FULL_TURN_DEGREES: Float = 360f
 
-    /** Snap the reported level onto a tick within this many units of it. */
-    const val MAGNET_ZONE_UNITS: Float = 0.1f
+    /**
+     * The bezel draws a longer major mark every this many units when a turn has more
+     * units than this: 10 majors per turn (every 36°) on the 50-tick fine dial, with the
+     * twelve o'clock mark as the first of them.
+     */
+    const val MAJOR_MARK_SPACING_UNITS: Int = 5
+
+    /**
+     * Magnet capture zone as a share of the spacing between magnet marks. Before the
+     * 50-tick dial the magnet caught whole-percent majors within ±0.1% (a tenth of their
+     * spacing, ±3.6°); the same share of the 5-unit major spacing is ±0.5 units (±3.6°).
+     */
+    const val MAGNET_ZONE_FRACTION: Float = 0.1f
 
     /**
      * Post-snap deadzone: after a snap, raw must move this many ticks (units)
@@ -54,10 +65,46 @@ object TickDial {
     /** The output unit for [level]; the same rounding the controller writes with. */
     fun tickIndex(level: Float, maxUnits: Int): Int = DialMath.toStreamIndex(clampLevel(level, maxUnits), maxUnits)
 
-    /** Strong detent at every full turn (and at the top end). */
+    /**
+     * Units between drawn major marks: [MAJOR_MARK_SPACING_UNITS] when a turn has more marks
+     * than that (fine mode), otherwise one full turn (Android steps: only twelve o'clock).
+     */
+    fun majorSpacing(unitsPerTurn: Int): Int = when {
+        unitsPerTurn <= 0 -> 0
+        unitsPerTurn > MAJOR_MARK_SPACING_UNITS -> MAJOR_MARK_SPACING_UNITS
+        else -> unitsPerTurn
+    }
+
+    /** Whether bezel mark [indexInTurn] (0 = twelve o'clock) is drawn as a major mark. */
+    fun isDrawnMajorMark(indexInTurn: Int, unitsPerTurn: Int): Boolean {
+        val spacing = majorSpacing(unitsPerTurn)
+        return spacing > 0 && Math.floorMod(indexInTurn, spacing) == 0
+    }
+
+    /** Strong detent at every drawn major mark (twelve o'clock included) and at the top end. */
     fun isMajorTick(tick: Int, unitsPerTurn: Int, maxUnits: Int): Boolean {
-        if (unitsPerTurn <= 0) return false
-        return tick == maxUnits || Math.floorMod(tick, unitsPerTurn) == 0
+        val spacing = majorSpacing(unitsPerTurn)
+        if (spacing <= 0) return false
+        return tick == maxUnits || Math.floorMod(tick, spacing) == 0
+    }
+
+    /**
+     * Units between magnet marks: the drawn major marks in fine mode. In Android-steps mode
+     * every tick is a whole step and keeps its own magnet, as before.
+     */
+    fun magnetSpacing(unitsPerTurn: Int): Int = when {
+        unitsPerTurn <= 0 -> 1
+        unitsPerTurn > MAJOR_MARK_SPACING_UNITS -> MAJOR_MARK_SPACING_UNITS
+        else -> 1
+    }
+
+    /** Capture zone in units: ±0.5 in fine mode (±3.6°), ±0.1 step in Android-steps mode. */
+    fun magnetZoneUnits(unitsPerTurn: Int): Float = MAGNET_ZONE_FRACTION * magnetSpacing(unitsPerTurn)
+
+    /** Magnet marks: multiples of [magnetSpacing], plus 0 and [maxUnits]. */
+    fun isMagnetMark(tick: Int, unitsPerTurn: Int, maxUnits: Int): Boolean {
+        if (tick < 0 || tick > maxUnits) return false
+        return tick == 0 || tick == maxUnits || Math.floorMod(tick, magnetSpacing(unitsPerTurn)) == 0
     }
 
     fun crossedIncludesMajor(fromTick: Int, toTick: Int, unitsPerTurn: Int, maxUnits: Int): Boolean {
@@ -119,32 +166,41 @@ object TickDial {
         return out
     }
 
-    private fun nearestTick(level: Float, maxUnits: Int): Int =
-        floor(clampLevel(level, maxUnits) + 0.5f).toInt().coerceIn(0, maxUnits.coerceAtLeast(0))
+    /** Nearest magnet mark to [level] (a multiple of [magnetSpacing], or 0 / [maxUnits]). */
+    fun nearestMagnetMark(level: Float, unitsPerTurn: Int, maxUnits: Int): Int {
+        val max = maxUnits.coerceAtLeast(0)
+        val l = clampLevel(level, max)
+        val spacing = magnetSpacing(unitsPerTurn)
+        val down = (floor(l / spacing).toInt() * spacing).coerceIn(0, max)
+        val up = (down + spacing).coerceAtMost(max)
+        return listOf(down, up, max).minByOrNull { abs(l - it) } ?: 0
+    }
 
-    private fun inZone(level: Float, maxUnits: Int): Boolean =
-        abs(clampLevel(level, maxUnits) - nearestTick(level, maxUnits)) <= MAGNET_ZONE_UNITS + 1e-4f
+    private fun inZone(level: Float, mark: Int, unitsPerTurn: Int): Boolean =
+        abs(level - mark) <= magnetZoneUnits(unitsPerTurn) + 1e-4f
 
     /**
-     * Magnet overlay for one drag frame, on the unit ticks. Same rules as the
-     * earlier whole-percent magnet: snap when raw is within [MAGNET_ZONE_UNITS]
-     * of a tick or a fast frame sweeps across one; after a snap, no new snap
-     * until raw moves [MAGNET_RESNAP_CLEAR_UNITS] away. The overlay only changes
-     * the reported (drawn) level; callers keep the raw level for the next delta.
+     * Magnet overlay for one drag frame, on the magnet marks (the drawn major marks in fine
+     * mode, every step in Android-steps mode). Same rules as the earlier whole-percent magnet:
+     * snap when raw is within [magnetZoneUnits] of a mark or a fast frame sweeps across one;
+     * after a snap, no new snap until raw moves [MAGNET_RESNAP_CLEAR_UNITS] away. The overlay
+     * only changes the reported (drawn) level; callers keep the raw level for the next delta.
      */
     fun resolveMagnet(
         previousRaw: Float,
         raw: Float,
         lastSnapped: Float,
         holding: Boolean,
+        unitsPerTurn: Int,
         maxUnits: Int,
     ): TickMagnetResult {
         val prev = clampLevel(previousRaw, maxUnits)
         val r = clampLevel(raw, maxUnits)
         var latch = lastSnapped
         if (!latch.isNaN() && abs(r - latch) >= MAGNET_RESNAP_CLEAR_UNITS - 1e-4f) latch = Float.NaN
-        val zone = inZone(r, maxUnits)
-        val nearest = nearestTick(r, maxUnits).toFloat()
+        val mark = nearestMagnetMark(r, unitsPerTurn, maxUnits)
+        val zone = inZone(r, mark, unitsPerTurn)
+        val nearest = mark.toFloat()
         // Keep holding only on the same tick; a different tick is a new snap (deadzone rules).
         if (holding && zone && (latch.isNaN() || latch == nearest)) {
             return TickMagnetResult(nearest, nearest, true)
@@ -152,6 +208,7 @@ object TickDial {
         if (latch.isNaN()) {
             if (zone) return TickMagnetResult(nearest, nearest, true)
             val crossed = ticksCrossedBySweep(prev, r, maxUnits)
+                .filter { isMagnetMark(it, unitsPerTurn, maxUnits) }
             if (crossed.isNotEmpty()) {
                 val snapped = crossed.first().toFloat()
                 return TickMagnetResult(snapped, snapped, false)
