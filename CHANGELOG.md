@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 (versionCode 30, pre-release 1.1.0-pre.3)
+
+- The bezel now draws 150 thin marks per turn in Samsung fine mode (three per volume unit, 2.4 degrees apart). The volume still moves 50 units per turn over 3 turns; the light haptic, magnet and strong haptic are unchanged. The mark on each unit is slightly longer than the two between units. The 10 major marks per turn (every 5 units) stay solid accent lines. Android-steps mode draws 15 marks per turn (three per step).
+- Unlit parts are much darker: background #050505, panes #0E0E0E, unlit minor marks #242424, unlit ring lines and borders #1E1E1E. The Reveal highlight is stronger so the sweep reads clearly: it fades over 80 degrees on each side of the pointer and reaches 75% of the way to the reveal color. It still only lights lines.
+- Font: the app now uses Selawik, Microsoft's open-source font made to match Segoe UI (SIL Open Font License 1.1). The percentage uses Selawik Semilight; other text uses the Selawik weights. The font files are not in git: a Gradle task downloads the pinned Selawik 1.01 release, checks SHA-256 hashes, caches the zip in the Gradle user home and writes the fonts into a generated resource folder (see docs/BUILDING.md). The license is in `docs/licenses/Selawik-OFL.txt`.
+
 ## 1.1.0 (versionCode 29, pre-release 1.1.0-pre.2)
 
 - Replaced the glow from 1.1.0-pre.1 with a restrained look. There is no blur layer, no halo strokes and no glow on the percentage any more.

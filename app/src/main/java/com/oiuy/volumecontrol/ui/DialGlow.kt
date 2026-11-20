@@ -9,21 +9,21 @@ import kotlin.math.abs
  * Only lines are lit (minor marks, the outer bezel line, the knob edge); no
  * area is filled and nothing has a halo. The major marks and the pointer are
  * plain solid accent lines and are not affected. Marks far from the pointer
- * stay at their dim base color.
+ * stay at their near-black base color.
  *
  * Pure Kotlin with no Android types so it can be unit tested. All functions
  * are allocation-free.
  */
 object DialGlow {
     /** How far the highlight reaches on each side of the pointer, in degrees. */
-    const val REVEAL_REACH_DEGREES = 100f
+    const val REVEAL_REACH_DEGREES = 80f
 
     /**
      * Strongest highlight, directly at the pointer, as the fraction of the way
-     * from a line's dim base color to the reveal color. Kept low so the effect
-     * stays subtle.
+     * from a line's near-black base color to the reveal color. The unlit parts
+     * are almost invisible, so the highlight is what makes the lines readable.
      */
-    const val REVEAL_MAX = 0.5f
+    const val REVEAL_MAX = 0.75f
 
     /** Shortest angle between two directions, 0..180 degrees. */
     fun angularDistance(aDegrees: Float, bDegrees: Float): Float {

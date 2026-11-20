@@ -33,7 +33,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oiuy.volumecontrol.volume.DialMath
@@ -44,18 +43,19 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Large tactile dial where every bezel mark is one output unit.
+ * Large tactile dial where every third bezel mark is one output unit.
  *
- * The bezel shows [unitsPerTurn] stationary marks; one full turn moves
- * [unitsPerTurn] units, so each mark the indicator passes is one volume
- * change (Samsung fine mode: 50 per turn, 3 turns for 150). Twelve o'clock is
+ * One full turn moves [unitsPerTurn] units (Samsung fine mode: 50 per turn,
+ * 3 turns for 150). The stationary bezel draws three marks per unit, so each
+ * third mark the indicator passes is one volume change. Twelve o'clock is
  * the landmark for every full turn. Rotation is hard-stopped at 0 and
  * [maxUnits].
  *
- * Look: dark and flat (Windows 10 Calculator/Calendar style). The major marks
- * and the knob pointer are solid accent lines. Minor marks, the bezel line and
- * the knob edge are dim and get a faint, wide Reveal highlight centred on the
- * pointer ([DialGlow]). No blur, halo or glow.
+ * Look: dark and flat (Windows 10 Calculator/Calendar style). The bezel draws
+ * three thin marks per unit ([DialMarks], 150 per turn in fine mode); the
+ * major marks and the knob pointer are solid accent lines. Minor marks, the
+ * bezel line and the knob edge are near-black and are lit by a Reveal
+ * highlight centred on the pointer ([DialGlow]). No blur, halo or glow.
  *
  * Finger deltas always update a continuous **raw** level first. A tick magnet
  * ([TickDial.resolveMagnet]) may overlay the drawn level onto a tick; it never
@@ -210,7 +210,7 @@ fun VolumeDial(
                             drawCircle(brush = ringReveal, radius = geo.radius * 0.985f, center = c, style = hairline)
                         }
 
-                        // Minor marks: dim gray, faintly brighter near the pointer.
+                        // Minor marks: near-black, lit by the reveal near the pointer.
                         for (i in 0 until geo.marks) {
                             if (geo.major[i]) continue
                             drawLine(
@@ -265,9 +265,10 @@ fun VolumeDial(
         Text(
             text = "$displayPercent%",
             style = MaterialTheme.typography.displayLarge.copy(
-                fontWeight = FontWeight.Light,
+                fontFamily = Selawik,
+                fontWeight = SemilightWeight,
                 fontSize = 56.sp,
-                letterSpacing = (-1).sp,
+                letterSpacing = 0.sp,
             ),
             color = FluentDark.Text,
         )
@@ -281,13 +282,14 @@ fun VolumeDial(
 private class DialGeometry(size: Size, unitsPerTurn: Int) {
     val radius = min(size.width, size.height) / 2f
     private val stroke = radius * 0.08f
-    val marks = unitsPerTurn.coerceAtLeast(1)
+    /** Drawn marks per turn: [DialMarks.VISUAL_TICKS_PER_UNIT] per unit (150 in fine mode). */
+    val marks = DialMarks.visualTicks(unitsPerTurn.coerceAtLeast(1))
     val knobRadius = radius * 0.72f
     val arcRadius = radius * 0.765f
-    val minorWidth = stroke * 0.16f
-    private val majorWidth = stroke * 0.24f
-    private val noonWidth = stroke * 0.32f
-    val pointerWidth = stroke * 0.30f
+    val minorWidth = stroke * 0.09f
+    private val majorWidth = stroke * 0.22f
+    private val noonWidth = stroke * 0.30f
+    val pointerWidth = stroke * 0.26f
     val pointerInner = radius * 0.50f
     val pointerOuter = radius * 0.64f
     private val outerR = radius * 0.95f
@@ -298,19 +300,22 @@ private class DialGeometry(size: Size, unitsPerTurn: Int) {
     private val innerR = FloatArray(marks)
 
     init {
-        val step = TickDial.degreesPerTick(marks)
+        val perTurn = unitsPerTurn.coerceAtLeast(1)
         for (i in 0 until marks) {
-            markDegrees[i] = i * step
+            val deg = DialMarks.degreesOf(i, perTurn)
+            markDegrees[i] = deg
             // Major mark every TickDial.MAJOR_MARK_SPACING_UNITS units: the same marks
             // that have the magnet and the strong haptic.
-            major[i] = TickDial.isDrawnMajorMark(i, marks)
-            val rad = Math.toRadians((i * step - 90f).toDouble())
+            major[i] = DialMarks.isMajor(i, perTurn)
+            val rad = Math.toRadians((deg - 90f).toDouble())
             cosA[i] = cos(rad).toFloat()
             sinA[i] = sin(rad).toFloat()
             innerR[i] = when {
                 i == 0 -> radius * 0.80f
                 major[i] -> radius * 0.84f
-                else -> radius * 0.885f
+                // Marks on a volume unit are a little longer than the in-between marks.
+                DialMarks.isUnitTick(i) -> radius * 0.895f
+                else -> radius * 0.91f
             }
         }
     }

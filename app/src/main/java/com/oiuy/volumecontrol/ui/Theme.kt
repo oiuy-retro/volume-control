@@ -6,6 +6,7 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
@@ -14,7 +15,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.oiuy.volumecontrol.R
 
 /**
  * Dark, flat palette in the spirit of the Windows 10 Calculator and Calendar
@@ -22,23 +27,62 @@ import androidx.compose.ui.unit.dp
  * The app is always dark.
  */
 object FluentDark {
-    val Background = Color(0xFF0F0F0F)
-    val Pane = Color(0xFF1A1A1A)
-    val PaneHigh = Color(0xFF222222)
-    val Border = Color(0xFF2E2E2E)
-    val BorderStrong = Color(0xFF3D3D3D)
+    val Background = Color(0xFF050505)
+    val Pane = Color(0xFF0E0E0E)
+    val PaneHigh = Color(0xFF151515)
+    /** Unlit borders and ring lines: near-black, only just visible. */
+    val Border = Color(0xFF1E1E1E)
+    val BorderStrong = Color(0xFF2A2A2A)
     val Text = Color(0xFFF2F2F2)
     val TextSecondary = Color(0xFFB8B8B8)
 
-    /** Knob face and the dim color of minor marks away from the pointer. */
-    val Knob = Color(0xFF151515)
-    val MarkDim = Color(0xFF474747)
+    /** Knob face and the unlit color of minor marks away from the pointer. */
+    val Knob = Color(0xFF0A0A0A)
+    val MarkDim = Color(0xFF242424)
 
     /** Neutral part of the Reveal highlight color. */
-    val RevealNeutral = Color(0xFFD0D0D0)
+    val RevealNeutral = Color(0xFFD6D6D6)
 
-    /** Light color when the system has no accent (Android 11 and older). */
+    /** Accent when the system has no accent (Android 11 and older). */
     val FallbackAccent = Color(0xFF4CC2FF)
+}
+
+/** Segoe UI Semilight's weight. */
+val SemilightWeight = FontWeight(350)
+
+/**
+ * Selawik, Microsoft's open-source Segoe UI-compatible font (SIL OFL 1.1).
+ * The font files are fetched at build time; see docs/BUILDING.md.
+ */
+val Selawik = FontFamily(
+    Font(R.font.selawik_light, FontWeight.Light),
+    Font(R.font.selawik_semilight, SemilightWeight),
+    Font(R.font.selawik_regular, FontWeight.Normal),
+    Font(R.font.selawik_semibold, FontWeight.SemiBold),
+    Font(R.font.selawik_bold, FontWeight.Bold),
+)
+
+/** Material type scale with every style in Selawik. */
+private val SelawikTypography: Typography by lazy(LazyThreadSafetyMode.NONE) { selawikTypography() }
+
+private fun selawikTypography(): Typography = Typography().run {
+    copy(
+        displayLarge = displayLarge.copy(fontFamily = Selawik),
+        displayMedium = displayMedium.copy(fontFamily = Selawik),
+        displaySmall = displaySmall.copy(fontFamily = Selawik),
+        headlineLarge = headlineLarge.copy(fontFamily = Selawik),
+        headlineMedium = headlineMedium.copy(fontFamily = Selawik),
+        headlineSmall = headlineSmall.copy(fontFamily = Selawik),
+        titleLarge = titleLarge.copy(fontFamily = Selawik),
+        titleMedium = titleMedium.copy(fontFamily = Selawik),
+        titleSmall = titleSmall.copy(fontFamily = Selawik),
+        bodyLarge = bodyLarge.copy(fontFamily = Selawik),
+        bodyMedium = bodyMedium.copy(fontFamily = Selawik),
+        bodySmall = bodySmall.copy(fontFamily = Selawik),
+        labelLarge = labelLarge.copy(fontFamily = Selawik),
+        labelMedium = labelMedium.copy(fontFamily = Selawik),
+        labelSmall = labelSmall.copy(fontFamily = Selawik),
+    )
 }
 
 /** The accent used for the dial's major marks, pointer and progress line. */
@@ -82,6 +126,7 @@ fun VolumeControlTheme(
             colorScheme = base.fluentNeutrals(),
             motionScheme = MotionScheme.expressive(),
             shapes = shapes,
+            typography = SelawikTypography,
             content = content,
         )
     }

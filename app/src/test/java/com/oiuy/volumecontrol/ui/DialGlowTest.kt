@@ -41,7 +41,7 @@ class DialGlowTest {
     @Test
     fun revealPeaksAtThePointerAndStaysSubtle() {
         assertEquals(DialGlow.REVEAL_MAX, DialGlow.reveal(120f, 120f), eps)
-        assertTrue(DialGlow.REVEAL_MAX <= 0.5f)
+        assertTrue(DialGlow.REVEAL_MAX < 1f)
         for (deg in 0 until 360) {
             val r = DialGlow.reveal(deg.toFloat(), 0f)
             assertTrue(r in 0f..DialGlow.REVEAL_MAX)
@@ -50,7 +50,7 @@ class DialGlowTest {
 
     @Test
     fun revealIsWideAndSoft() {
-        // Half strength at half the reach; still lit five marks (36 degrees) away.
+        // Half strength at half the reach; still over half lit five units (36 degrees) away.
         assertEquals(DialGlow.REVEAL_MAX / 2f, DialGlow.reveal(DialGlow.REVEAL_REACH_DEGREES / 2f, 0f), eps)
         assertTrue(DialGlow.reveal(36f, 0f) > DialGlow.REVEAL_MAX / 2f)
         assertTrue(DialGlow.reveal(7.2f, 0f) > DialGlow.reveal(14.4f, 0f))
