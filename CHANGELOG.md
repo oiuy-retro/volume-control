@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0 (versionCode 28, pre-release 1.1.0-pre.1)
+
+- New look: the app is always dark, with a flat near-black background, slightly lighter panes and hairline borders, modeled on the dark mode of the Windows 10 Calculator and Calendar apps. The settings card has small corners and a 1 dp border.
+- The dial now uses light instead of fills. Only the 10 major marks per turn (every 5 fine units, the same marks that have the magnet and the strong haptic) and the knob pointer glow, in the system accent color (Material You, Android 12+; a fixed blue `#4CC2FF` on older versions).
+- Minor marks are nearly dark on their own and are lit by nearby light: a little from the neighbouring major marks and strongly from the pointer, fading smoothly over 54 degrees on each side. As the knob turns, the pointer's light sweeps across the marks. The outer bezel line and the knob edge are lit the same way. The light model is a plain Kotlin object (`DialGlow`) with unit tests.
+- The center percentage uses a light weight and glows in the accent color, with a faint accent light on the knob face behind it.
+- On Android 12+ the glow is a real blur layer drawn under the sharp marks. Older versions draw stacked translucent strokes instead.
+- The pointer sits slightly further out on the knob (50-64% of the radius instead of 42-56%) so it does not run into the readout.
+- No behavior changes: 50 marks per turn, 3 turns, magnets, haptics, volume button settings and the widget are unchanged. Nothing in the new look is animated beyond following the knob.
+
 ## 1.0.2 (versionCode 27, pre-release 1.0.2-pre.5)
 
 - Combines the volume button feature (1.0.2-pre.1 to pre.4, now on main) with the major-mark dial fix from 1.0.1-pre.2. The changes are the same as in those builds, listed below.

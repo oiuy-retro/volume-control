@@ -1,5 +1,6 @@
 package com.oiuy.volumecontrol.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,7 +52,9 @@ fun VolumeButtonSettings(
         onClick = onRowClick,
         enabled = fineAvailable,
         shape = MaterialTheme.shapes.large,
+        // Flat pane with a hairline border, like a Windows 10 settings card.
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp),
