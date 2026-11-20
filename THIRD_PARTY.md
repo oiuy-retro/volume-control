@@ -14,5 +14,6 @@ This project uses the following third-party libraries. Licenses are as published
 | Kotlin standard library / coroutines (transitive) | Apache-2.0 |
 | Android Gradle Plugin | Apache-2.0 |
 | JUnit 4 (tests) | EPL-1.0 |
+| Selawik font 1.01 (Microsoft, https://github.com/microsoft/Selawik), bundled in the APK, downloaded at build time | SIL OFL 1.1, see [docs/licenses/Selawik-OFL.txt](docs/licenses/Selawik-OFL.txt) |
 
-No additional proprietary components are bundled. Material Design trademarks belong to Google LLC.
+No additional proprietary components are bundled. Selawik is a trademark of Microsoft Corporation. Material Design trademarks belong to Google LLC.

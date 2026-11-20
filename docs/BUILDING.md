@@ -32,6 +32,22 @@ Optional copy location used for sideload hand-off (not committed):
 
 `/workspace/android/out-volume-control/`
 
+## Selawik font download
+
+The app uses the Selawik font (Microsoft, SIL Open Font License 1.1). The font files are third-party binaries, so they are not stored in git. The Gradle task `:app:fetchSelawikFonts` (defined in `app/build.gradle.kts`) runs before resource merging and:
+
+1. Looks for a cached `Selawik_Release.zip` in `~/.gradle/caches/volume-control/selawik-1.01/` (inside the Gradle user home).
+2. If it is missing or its SHA-256 does not match, downloads `https://github.com/microsoft/Selawik/releases/download/1.01/Selawik_Release.zip` and checks it against the pinned SHA-256 `3f62c51e05e3b5a1e6241cf92a371f0be2ea1183aa87b30718bbd40832a8d423`. A mismatch stops the build.
+3. Extracts the five TTF weights (Light, Semilight, Regular, Semibold, Bold), checks each against its own pinned SHA-256, and writes them as `selawik_*.ttf` into `app/build/generated/selawik/res/font/`, which is added to every variant's resources.
+
+Only the first build needs internet access. To prepare an offline or release build, run it once ahead of time:
+
+```bash
+./gradlew :app:fetchSelawikFonts
+```
+
+The license text is in `docs/licenses/Selawik-OFL.txt`. The task `:app:selawikLicenseAsset` copies it into the APK as `assets/licenses/Selawik-OFL.txt`, next to the fonts.
+
 ## Release signing
 
 1. Copy `keystore.properties.example` to `keystore.properties`.
@@ -66,7 +82,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 ./gradlew :app:testDebugUnitTest
 ```
 
-Dial math coverage lives under `app/src/test/java/com/oiuy/volumecontrol/volume/`.
+Dial math coverage lives under `app/src/test/java/com/oiuy/volumecontrol/volume/`. The dial's Reveal highlight (`DialGlow`: angular distance, falloff, highlight strength and reach) is tested in `app/src/test/java/com/oiuy/volumecontrol/ui/DialGlowTest.kt`, and the drawn-mark mapping (`DialMarks`: 150 marks per turn, every third on a unit, majors every 5 units) in `DialMarksTest.kt` in the same folder.
 
 Volume backend coverage lives in the same folder: `VolumeEngineTest` (mode choice, fallback, clamping, no public writes in fine mode), `CoalescingWriterTest` (latest-value coalescing), `MediaVolumeControllerTest` (50 units per turn, one write per tick, widget steps, reads never write), `TickDialTest` (50 ticks per turn, 3 turns at 150, fallback ticks, hard stops, magnet with a 2-tick deadzone), `HapticUnitsTest` (one haptic tick per unit, strong tick every full turn), and `VolumeSourceGuardTest` (platform volume writes and method lookups only in `AndroidVolumePorts.kt`, no restricted access techniques).
 

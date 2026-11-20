@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.1.0 (versionCode 30, pre-release 1.1.0-pre.3)
+
+- The bezel now draws 150 thin marks per turn in Samsung fine mode (three per volume unit, 2.4 degrees apart). The volume still moves 50 units per turn over 3 turns; the light haptic, magnet and strong haptic are unchanged. The mark on each unit is slightly longer than the two between units. The 10 major marks per turn (every 5 units) stay solid accent lines. Android-steps mode draws 15 marks per turn (three per step).
+- Unlit parts are much darker: background #050505, panes #0E0E0E, unlit minor marks #242424, unlit ring lines and borders #1E1E1E. The Reveal highlight is stronger so the sweep reads clearly: it fades over 80 degrees on each side of the pointer and reaches 75% of the way to the reveal color. It still only lights lines.
+- Font: the app now uses Selawik, Microsoft's open-source font made to match Segoe UI (SIL Open Font License 1.1). The percentage uses Selawik Semilight; other text uses the Selawik weights. The font files are not in git: a Gradle task downloads the pinned Selawik 1.01 release, checks SHA-256 hashes, caches the zip in the Gradle user home and writes the fonts into a generated resource folder (see docs/BUILDING.md). The license is in `docs/licenses/Selawik-OFL.txt`.
+
+## 1.1.0 (versionCode 29, pre-release 1.1.0-pre.2)
+
+- Replaced the glow from 1.1.0-pre.1 with a restrained look. There is no blur layer, no halo strokes and no glow on the percentage any more.
+- The 10 major marks per turn and the knob pointer are plain solid lines in the accent color, slightly thicker than the minor marks.
+- Reveal highlight, as in Windows 10: the minor marks, the outer bezel line and the knob edge get a faint, wide brightening centred on the pointer. It fades smoothly over 100 degrees on each side and reaches at most half way from the line's dim gray to a light neutral gray with a little accent. Only lines are lit; no area is filled. Marks away from the pointer stay dim gray but visible. The major marks do not light their neighbours.
+- The center percentage is plain light-weight white text. The accent light on the knob face is removed.
+- The progress arc is a thin accent line on a hairline track.
+- The dark background, panes and hairline borders from pre.1 are unchanged, as is all behavior.
+
+## 1.1.0 (versionCode 28, pre-release 1.1.0-pre.1)
+
+- New look: the app is always dark, with a flat near-black background, slightly lighter panes and hairline borders, modeled on the dark mode of the Windows 10 Calculator and Calendar apps. The settings card has small corners and a 1 dp border.
+- The dial now uses light instead of fills. Only the 10 major marks per turn (every 5 fine units, the same marks that have the magnet and the strong haptic) and the knob pointer glow, in the system accent color (Material You, Android 12+; a fixed blue `#4CC2FF` on older versions).
+- Minor marks are nearly dark on their own and are lit by nearby light: a little from the neighbouring major marks and strongly from the pointer, fading smoothly over 54 degrees on each side. As the knob turns, the pointer's light sweeps across the marks. The outer bezel line and the knob edge are lit the same way. The light model is a plain Kotlin object (`DialGlow`) with unit tests.
+- The center percentage uses a light weight and glows in the accent color, with a faint accent light on the knob face behind it.
+- On Android 12+ the glow is a real blur layer drawn under the sharp marks. Older versions draw stacked translucent strokes instead.
+- The pointer sits slightly further out on the knob (50-64% of the radius instead of 42-56%) so it does not run into the readout.
+- No behavior changes: 50 marks per turn, 3 turns, magnets, haptics, volume button settings and the widget are unchanged. Nothing in the new look is animated beyond following the knob.
+
 ## 1.0.2 (versionCode 27, pre-release 1.0.2-pre.5)
 
 - Combines the volume button feature (1.0.2-pre.1 to pre.4, now on main) with the major-mark dial fix from 1.0.1-pre.2. The changes are the same as in those builds, listed below.

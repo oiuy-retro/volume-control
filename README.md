@@ -37,12 +37,13 @@ Volume Control can take over how far the phone's volume up and volume down butto
 
 - Gesture tracking is relative to the dial center.
 - Volume delta: `(degrees / 360) * ticksPerTurn` units. In Samsung fine mode ticksPerTurn is 50 fine units (7.2° per tick). In Android-steps mode it is 5 whole steps (72° per tick), so every mark is a real step there too and the number of turns to cover the range is about the same.
-- A stationary bezel draws one mark per tick (50 in fine mode, 5 in Android-steps mode). Twelve o'clock is emphasized; in fine mode every 5th mark is a longer major mark (10 per turn). The marks do not rotate with the knob.
+- A stationary bezel draws three thin marks per tick (150 per turn in fine mode, 2.4° apart; 15 in Android-steps mode). The mark on each tick is slightly longer than the two between ticks. Twelve o'clock is emphasized; in fine mode every 5th tick has a longer major mark (10 per turn). The marks do not rotate with the knob.
 - Only the knob and indicator rotate. The indicator shows the position within the current turn and points at twelve o'clock at each full turn. The arc around the dial shows progress over the whole range. The dial stops at 0 and at the maximum.
 - The volume written is the whole unit under the dial, so the value changes exactly as a tick passes.
 - In fine mode a magnet pulls the drawn indicator onto the major marks (every 5 fine units, plus 0 and the maximum). It catches within ±0.5 units (±3.6°, the same angle as the magnet before the 50-tick dial) when the finger stops close to a major mark or a fast frame sweeps across one. Minor marks have no magnet. After snapping, it will not snap again until the finger has moved 2 ticks (2 fine units, 14.4°) away. In Android-steps mode every step keeps a small magnet (±0.1 step). The magnet only affects drawing, never the value written.
 - Tick haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) plus a light 5 ms / amplitude 65 vibrator one-shot. Major marks (every 5 fine units in fine mode, every full turn in Android-steps mode) use `LONG_PRESS` plus a 28 ms / amplitude 255 one-shot. At most one pulse per input frame. Light ticks are rate-limited (~12 ms) and are suppressed for 28 ms after a major so they cannot cut the major short. The app requests the `VIBRATE` permission for this.
 - The center readout shows the volume as a percent to one decimal place, updating on every tick (one fine tick is about 0.7% at 150 units).
+- Look: the app is always dark and flat, in the style of the Windows 10 Calculator and Calendar dark mode. The major marks and the knob pointer are solid lines in the system accent color. The minor marks, the outer bezel line and the knob edge are near-black when unlit and are made visible by a Reveal highlight around the pointer that follows it as the knob turns. Text uses Selawik, an open-source font metric-compatible with Segoe UI; the center percentage is plain white Selawik Semilight. There is no blur or glow.
 - In Android-steps mode, crossing a tick also brings up the Android system media-volume panel (`AudioManager.FLAG_SHOW_UI`), rate-limited to about once every 120 ms. In Samsung fine mode the panel is not opened, and haptic ticks follow fine units as described above.
 
 ## Home-screen widget
@@ -91,6 +92,7 @@ Requirements:
 - JDK 21
 - Android SDK with platforms android-36 and android-37 and build-tools 36.0.0
 - A `local.properties` file with `sdk.dir=...` (gitignored)
+- Internet access for the first build: the Selawik font files are downloaded from Microsoft's GitHub release and checked against pinned SHA-256 hashes (they are not stored in this repository). Later builds use the cached copy.
 
 ```bash
 export JAVA_HOME=/path/to/jdk-21
@@ -109,13 +111,13 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 - The home-screen widget cannot implement continuous dial rotation; only tap and ±10% actions are supported.
 - The volume button step works only while the screen is on, only with Samsung fine volume, and only after you turn on its accessibility service.
 - Without Samsung fine volume, the media step count is device-dependent (often around 15 steps); the dial then has 5 ticks per turn, one per whole step.
-- Dynamic color (Material You) requires API 31+. Older devices use the expressive light scheme or the dark color scheme.
+- The accent color (Material You) requires API 31+. Older devices use a fixed blue accent. The app has no light theme.
 
 ## Package
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
-- versionName: `1.0.2`
-- versionCode: `27`
+- versionName: `1.1.0`
+- versionCode: `30`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 
@@ -124,3 +126,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
 
 Third-party libraries and their licenses are listed in [THIRD_PARTY.md](THIRD_PARTY.md). Credit is given only where due (AndroidX, Material, Kotlin, Glance, and related tooling).
+
+## Attributions
+
+- Selawik font: Copyright 2015 Microsoft Corporation, with Reserved Font Name Selawik, licensed under the SIL Open Font License 1.1. Source: https://github.com/microsoft/Selawik (release 1.01). License text: [docs/licenses/Selawik-OFL.txt](docs/licenses/Selawik-OFL.txt). The font files are bundled unmodified in the APK, renamed only to fit Android resource naming, together with the license text (`assets/licenses/Selawik-OFL.txt`).
