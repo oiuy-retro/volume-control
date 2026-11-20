@@ -43,7 +43,7 @@ Volume Control can take over how far the phone's volume up and volume down butto
 - In fine mode a magnet pulls the drawn indicator onto the major marks (every 5 fine units, plus 0 and the maximum). It catches within ±0.5 units (±3.6°, the same angle as the magnet before the 50-tick dial) when the finger stops close to a major mark or a fast frame sweeps across one. Minor marks have no magnet. After snapping, it will not snap again until the finger has moved 2 ticks (2 fine units, 14.4°) away. In Android-steps mode every step keeps a small magnet (±0.1 step). The magnet only affects drawing, never the value written.
 - Tick haptics use the view feedback constant (`SEGMENT_FREQUENT_TICK` on API 34+, `TEXT_HANDLE_MOVE` on API 27+, otherwise `CLOCK_TICK`) plus a light 5 ms / amplitude 65 vibrator one-shot. Major marks (every 5 fine units in fine mode, every full turn in Android-steps mode) use `LONG_PRESS` plus a 28 ms / amplitude 255 one-shot. At most one pulse per input frame. Light ticks are rate-limited (~12 ms) and are suppressed for 28 ms after a major so they cannot cut the major short. The app requests the `VIBRATE` permission for this.
 - The center readout shows the volume as a percent to one decimal place, updating on every tick (one fine tick is about 0.7% at 150 units).
-- Look: the app is always dark and flat, in the style of the Windows 10 Calculator and Calendar dark mode. Only the major marks and the knob pointer give off light, in the system accent color. Minor marks are nearly dark and are lit by how close they are to those lights, so the pointer's light sweeps across the bezel as the knob turns. The center percentage glows too. On Android 12+ the glow is a blur layer; older versions use stacked translucent strokes.
+- Look: the app is always dark and flat, in the style of the Windows 10 Calculator and Calendar dark mode. The major marks and the knob pointer are solid lines in the system accent color. The minor marks, the outer bezel line and the knob edge are dim gray and get a faint, wide Reveal highlight around the pointer that follows it as the knob turns. The center percentage is plain light-weight white text. There is no blur or glow.
 - In Android-steps mode, crossing a tick also brings up the Android system media-volume panel (`AudioManager.FLAG_SHOW_UI`), rate-limited to about once every 120 ms. In Samsung fine mode the panel is not opened, and haptic ticks follow fine units as described above.
 
 ## Home-screen widget
@@ -116,7 +116,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) for concrete steps used on the project 
 
 - applicationId / namespace: `com.oiuy.volumecontrol`
 - versionName: `1.1.0`
-- versionCode: `28`
+- versionCode: `29`
 - minSdk: 26
 - compileSdk: 37 (required by Material 3 1.5.0-rc01); targetSdk: 36
 

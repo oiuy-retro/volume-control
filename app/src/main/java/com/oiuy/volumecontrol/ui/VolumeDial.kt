@@ -1,6 +1,5 @@
 package com.oiuy.volumecontrol.ui
 
-import android.os.Build
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -22,31 +21,23 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.center
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oiuy.volumecontrol.volume.DialMath
 import com.oiuy.volumecontrol.volume.TickDial
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -61,10 +52,10 @@ import kotlin.math.sin
  * the landmark for every full turn. Rotation is hard-stopped at 0 and
  * [maxUnits].
  *
- * Look: dark and flat (Windows 10 Calculator/Calendar style). Only the major
- * marks and the knob pointer give off light, in the system accent color; the
- * minor marks are lit by their distance to them ([DialGlow]), so the pointer's
- * light sweeps across the bezel as the knob turns. The center readout glows too.
+ * Look: dark and flat (Windows 10 Calculator/Calendar style). The major marks
+ * and the knob pointer are solid accent lines. Minor marks, the bezel line and
+ * the knob edge are dim and get a faint, wide Reveal highlight centred on the
+ * pointer ([DialGlow]). No blur, halo or glow.
  *
  * Finger deltas always update a continuous **raw** level first. A tick magnet
  * ([TickDial.resolveMagnet]) may overlay the drawn level onto a tick; it never
@@ -107,12 +98,8 @@ fun VolumeDial(
     val latestOnDragStart = rememberUpdatedState(onDragStart)
     val latestOnDragEnd = rememberUpdatedState(onDragEnd)
 
-    val glow = LocalGlowColor.current
-    val density = LocalDensity.current
-    val bloomRadiusPx = with(density) { 9.dp.toPx() }
-    val readoutGlowPx = with(density) { 22.dp.toPx() }
-    val hairlinePx = with(density) { 1.dp.toPx() }
-    val bloomMarginPx = with(density) { 24.dp.roundToPx() }
+    val accent = LocalGlowColor.current
+    val hairlinePx = with(LocalDensity.current) { 1.dp.toPx() }
 
     // The readout follows the unit actually written, so it changes once per tick.
     val currentTick = TickDial.tickIndex(level, maxUnits)
@@ -122,8 +109,6 @@ fun VolumeDial(
     val progressState = rememberUpdatedState(
         if (maxUnits > 0) TickDial.clampLevel(level, maxUnits) / maxUnits else 0f,
     )
-    // API 31+: the light sources get a real blur layer. Older versions draw stacked halo strokes.
-    val useBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     Box(
         modifier = modifier
@@ -133,7 +118,6 @@ fun VolumeDial(
             .semantics { contentDescription = "Volume dial, $displayPercent percent" },
         contentAlignment = Alignment.Center,
     ) {
-        // Dark base: bezel line, minor marks, progress, knob face. Takes the touch input.
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -206,39 +190,31 @@ fun VolumeDial(
                 .drawWithCache {
                     val geo = DialGeometry(size, unitsPerTurn)
                     val c = size.center
-                    // Reveal-style lit border: bright at the pointer, fading over the pointer's reach.
-                    val revealBrush = Brush.sweepGradient(
-                        colorStops = revealStops(FluentDark.Border, glow),
+                    // Reveal color: a neutral light gray with a touch of the accent.
+                    val revealColor = lerp(FluentDark.RevealNeutral, accent, 0.3f)
+                    // Reveal on the ring lines, centred on twelve o'clock and rotated to the pointer.
+                    val ringReveal = Brush.sweepGradient(
+                        colorStops = revealStops(FluentDark.Border, revealColor),
                         center = c,
-                    )
-                    val readoutLight = Brush.radialGradient(
-                        colors = listOf(glow.copy(alpha = 0.16f), glow.copy(alpha = 0.05f), Color.Transparent),
-                        center = c,
-                        radius = geo.radius * 0.5f,
                     )
                     val hairline = Stroke(width = hairlinePx)
                     val arcStroke = Stroke(width = hairlinePx * 2f, cap = StrokeCap.Round)
                     val arcTopLeft = Offset(c.x - geo.arcRadius, c.y - geo.arcRadius)
                     val arcSize = Size(geo.arcRadius * 2f, geo.arcRadius * 2f)
-                    val minorLit = lerp(glow, Color.White, 0.25f)
-                    val progressColor = glow.copy(alpha = 0.55f)
+                    val progressColor = accent.copy(alpha = 0.6f)
                     onDrawBehind {
                         val pointer = indicatorState.value
 
-                        // Outer bezel line and knob edge, lit where the pointer is.
+                        // Outer bezel line and knob edge: hairlines with the reveal highlight.
                         rotate(degrees = pointer, pivot = c) {
-                            drawCircle(brush = revealBrush, radius = geo.radius * 0.985f, center = c, style = hairline)
+                            drawCircle(brush = ringReveal, radius = geo.radius * 0.985f, center = c, style = hairline)
                         }
 
-                        // Stationary marks. Minor marks are dark unless a light is near.
+                        // Minor marks: dim gray, faintly brighter near the pointer.
                         for (i in 0 until geo.marks) {
                             if (geo.major[i]) continue
-                            val b = DialGlow.minorBrightness(
-                                geo.staticLight[i],
-                                DialGlow.pointerLight(geo.markDegrees[i], pointer),
-                            )
                             drawLine(
-                                color = lerp(FluentDark.MarkUnlit, minorLit, b),
+                                color = lerp(FluentDark.MarkDim, revealColor, DialGlow.reveal(geo.markDegrees[i], pointer)),
                                 start = geo.inner(i, c),
                                 end = geo.outer(i, c),
                                 strokeWidth = geo.minorWidth,
@@ -246,7 +222,19 @@ fun VolumeDial(
                             )
                         }
 
-                        // Progress over the whole range: a thin, unlit track with a dim accent line.
+                        // Major marks: solid accent lines.
+                        for (i in 0 until geo.marks) {
+                            if (!geo.major[i]) continue
+                            drawLine(
+                                color = accent,
+                                start = geo.inner(i, c),
+                                end = geo.outer(i, c),
+                                strokeWidth = geo.width(i),
+                                cap = StrokeCap.Round,
+                            )
+                        }
+
+                        // Progress over the whole range: a thin track with a thin accent line.
                         drawCircle(color = FluentDark.Border, radius = geo.arcRadius, center = c, style = hairline)
                         drawArc(
                             color = progressColor,
@@ -258,49 +246,18 @@ fun VolumeDial(
                             size = arcSize,
                         )
 
-                        // Knob: flat dark face with a hairline edge lit by the pointer.
+                        // Knob: flat dark face, hairline edge with the reveal highlight, solid accent pointer.
                         drawCircle(color = FluentDark.Knob, radius = geo.knobRadius, center = c)
-                        drawCircle(brush = readoutLight, radius = geo.radius * 0.5f, center = c)
                         rotate(degrees = pointer, pivot = c) {
-                            drawCircle(brush = revealBrush, radius = geo.knobRadius, center = c, style = hairline)
+                            drawCircle(brush = ringReveal, radius = geo.knobRadius, center = c, style = hairline)
+                            drawLine(
+                                color = accent,
+                                start = Offset(c.x, c.y - geo.pointerOuter),
+                                end = Offset(c.x, c.y - geo.pointerInner),
+                                strokeWidth = geo.pointerWidth,
+                                cap = StrokeCap.Round,
+                            )
                         }
-                    }
-                },
-        )
-        if (useBlur) {
-            // Bloom: only the light sources, blurred, over the dark base so the knob
-            // face does not hide the pointer's glow.
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    // Grow the layer into the dial's padding so the blur is not cut off at the edge.
-                    .layout { measurable, constraints ->
-                        val w = constraints.maxWidth + 2 * bloomMarginPx
-                        val h = constraints.maxHeight + 2 * bloomMarginPx
-                        val placeable = measurable.measure(Constraints.fixed(w, h))
-                        layout(constraints.maxWidth, constraints.maxHeight) {
-                            placeable.place(-bloomMarginPx, -bloomMarginPx)
-                        }
-                    }
-                    .graphicsLayer {
-                        renderEffect = BlurEffect(bloomRadiusPx, bloomRadiusPx, TileMode.Decal)
-                    }
-                    .drawWithCache {
-                        val geo = DialGeometry(size, unitsPerTurn, inset = bloomMarginPx.toFloat())
-                        onDrawBehind {
-                            drawLightSources(geo, glow, indicatorState.value, bloom = true, haloFallback = false)
-                        }
-                    },
-            )
-        }
-        // Sharp cores of the light sources on top.
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .drawWithCache {
-                    val geo = DialGeometry(size, unitsPerTurn)
-                    onDrawBehind {
-                        drawLightSources(geo, glow, indicatorState.value, bloom = false, haloFallback = !useBlur)
                     }
                 },
         )
@@ -311,9 +268,8 @@ fun VolumeDial(
                 fontWeight = FontWeight.Light,
                 fontSize = 56.sp,
                 letterSpacing = (-1).sp,
-                shadow = Shadow(color = glow.copy(alpha = 0.85f), offset = Offset.Zero, blurRadius = readoutGlowPx),
             ),
-            color = lerp(glow, Color.White, 0.6f),
+            color = FluentDark.Text,
         )
     }
 }
@@ -322,29 +278,27 @@ fun VolumeDial(
  * Bezel geometry for one size and mark count, computed once per draw cache
  * (not per frame). Fractions are of the dial radius.
  */
-private class DialGeometry(size: Size, unitsPerTurn: Int, inset: Float = 0f) {
-    val radius = (min(size.width, size.height) - 2f * inset).coerceAtLeast(0f) / 2f
-    val stroke = radius * 0.08f
+private class DialGeometry(size: Size, unitsPerTurn: Int) {
+    val radius = min(size.width, size.height) / 2f
+    private val stroke = radius * 0.08f
     val marks = unitsPerTurn.coerceAtLeast(1)
     val knobRadius = radius * 0.72f
     val arcRadius = radius * 0.765f
     val minorWidth = stroke * 0.16f
-    val majorWidth = stroke * 0.26f
-    val noonWidth = stroke * 0.36f
-    val pointerWidth = stroke * 0.36f
+    private val majorWidth = stroke * 0.24f
+    private val noonWidth = stroke * 0.32f
+    val pointerWidth = stroke * 0.30f
     val pointerInner = radius * 0.50f
     val pointerOuter = radius * 0.64f
     private val outerR = radius * 0.95f
     val markDegrees = FloatArray(marks)
     val major = BooleanArray(marks)
-    val staticLight = FloatArray(marks)
     private val cosA = FloatArray(marks)
     private val sinA = FloatArray(marks)
     private val innerR = FloatArray(marks)
 
     init {
         val step = TickDial.degreesPerTick(marks)
-        DialGlow.fillStaticLight(marks, staticLight)
         for (i in 0 until marks) {
             markDegrees[i] = i * step
             // Major mark every TickDial.MAJOR_MARK_SPACING_UNITS units: the same marks
@@ -371,89 +325,21 @@ private class DialGeometry(size: Size, unitsPerTurn: Int, inset: Float = 0f) {
     fun outer(i: Int, c: Offset) = Offset(c.x + cosA[i] * outerR, c.y + sinA[i] * outerR)
 }
 
-/** Sweep-gradient stops centred on twelve o'clock (0.75 of a sweep), following [DialGlow.falloff]. */
+/**
+ * Sweep-gradient stops for the reveal on the ring lines, centred on twelve
+ * o'clock (0.75 of a sweep) and following [DialGlow.reveal].
+ */
 private fun revealStops(dim: Color, light: Color): Array<Pair<Float, Color>> {
-    val steps = 6
-    val reach = DialGlow.POINTER_REACH_DEGREES
+    val steps = 10
+    val reach = DialGlow.REVEAL_REACH_DEGREES
     val stops = ArrayList<Pair<Float, Color>>()
     stops += 0f to dim
     for (k in -steps..steps) {
         val d = k * reach / steps
-        val f = DialGlow.falloff(abs(d), reach)
-        stops += (0.75f + d / 360f) to lerp(dim, light.copy(alpha = 0.9f), f)
+        stops += (0.75f + d / 360f) to lerp(dim, light, DialGlow.reveal(d, 0f))
     }
     stops += 1f to dim
     return stops.toTypedArray()
-}
-
-/**
- * The light sources: the major marks and the knob pointer. With [bloom] this
- * draws wide soft strokes for the blurred layer; otherwise it draws the crisp
- * cores, plus stacked halo strokes when [haloFallback] (no blur available).
- */
-private fun DrawScope.drawLightSources(
-    geo: DialGeometry,
-    glow: Color,
-    pointerDegrees: Float,
-    bloom: Boolean,
-    haloFallback: Boolean,
-) {
-    val c = size.center
-    for (i in 0 until geo.marks) {
-        if (!geo.major[i]) continue
-        val pointerLight = DialGlow.pointerLight(geo.markDegrees[i], pointerDegrees)
-        val b = DialGlow.majorBrightness(pointerLight)
-        glowLine(
-            glow = glow,
-            brightness = b,
-            whiteness = 0.15f + 0.35f * pointerLight,
-            start = geo.inner(i, c),
-            end = geo.outer(i, c),
-            width = geo.width(i),
-            bloom = bloom,
-            haloFallback = haloFallback,
-        )
-    }
-    rotate(degrees = pointerDegrees, pivot = c) {
-        glowLine(
-            glow = glow,
-            brightness = 1f,
-            whiteness = 0.45f,
-            start = Offset(c.x, c.y - geo.pointerOuter),
-            end = Offset(c.x, c.y - geo.pointerInner),
-            width = geo.pointerWidth,
-            bloom = bloom,
-            haloFallback = haloFallback,
-        )
-    }
-}
-
-private fun DrawScope.glowLine(
-    glow: Color,
-    brightness: Float,
-    whiteness: Float,
-    start: Offset,
-    end: Offset,
-    width: Float,
-    bloom: Boolean,
-    haloFallback: Boolean,
-) {
-    if (bloom) {
-        drawLine(glow.copy(alpha = brightness), start, end, strokeWidth = width * 2.6f, cap = StrokeCap.Round)
-        return
-    }
-    if (haloFallback) {
-        drawLine(glow.copy(alpha = 0.06f * brightness), start, end, strokeWidth = width * 6f, cap = StrokeCap.Round)
-        drawLine(glow.copy(alpha = 0.12f * brightness), start, end, strokeWidth = width * 3.6f, cap = StrokeCap.Round)
-        drawLine(glow.copy(alpha = 0.24f * brightness), start, end, strokeWidth = width * 2.2f, cap = StrokeCap.Round)
-    }
-    drawLine(
-        color = lerp(glow, Color.White, whiteness).copy(alpha = brightness),
-        start = start,
-        end = end,
-        strokeWidth = width,
-        cap = StrokeCap.Round,
-    )
 }
 
 /** One decimal place. */

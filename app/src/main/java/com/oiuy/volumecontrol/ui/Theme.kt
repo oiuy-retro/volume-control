@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 /**
  * Dark, flat palette in the spirit of the Windows 10 Calculator and Calendar
  * dark mode: near-black background, slightly lighter panes, thin borders.
- * The app is always dark so the dial's light has something to glow against.
+ * The app is always dark.
  */
 object FluentDark {
     val Background = Color(0xFF0F0F0F)
@@ -30,15 +30,18 @@ object FluentDark {
     val Text = Color(0xFFF2F2F2)
     val TextSecondary = Color(0xFFB8B8B8)
 
-    /** Unlit dial parts (knob face, unlit marks). */
+    /** Knob face and the dim color of minor marks away from the pointer. */
     val Knob = Color(0xFF151515)
-    val MarkUnlit = Color(0xFF2A2A2A)
+    val MarkDim = Color(0xFF474747)
+
+    /** Neutral part of the Reveal highlight color. */
+    val RevealNeutral = Color(0xFFD0D0D0)
 
     /** Light color when the system has no accent (Android 11 and older). */
     val FallbackAccent = Color(0xFF4CC2FF)
 }
 
-/** The accent used as the dial's light color. */
+/** The accent used for the dial's major marks, pointer and progress line. */
 val LocalGlowColor = staticCompositionLocalOf { FluentDark.FallbackAccent }
 
 @Composable
@@ -59,7 +62,7 @@ fun VolumeControlTheme(
         )
     }
     // Material You accent: system accent 1 at shade 300 is a clear, saturated
-    // light color. Older Android versions use the fixed fallback.
+    // accent. Older Android versions use the fixed fallback.
     val glow = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         colorResource(android.R.color.system_accent1_300)
     } else {

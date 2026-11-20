@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 (versionCode 29, pre-release 1.1.0-pre.2)
+
+- Replaced the glow from 1.1.0-pre.1 with a restrained look. There is no blur layer, no halo strokes and no glow on the percentage any more.
+- The 10 major marks per turn and the knob pointer are plain solid lines in the accent color, slightly thicker than the minor marks.
+- Reveal highlight, as in Windows 10: the minor marks, the outer bezel line and the knob edge get a faint, wide brightening centred on the pointer. It fades smoothly over 100 degrees on each side and reaches at most half way from the line's dim gray to a light neutral gray with a little accent. Only lines are lit; no area is filled. Marks away from the pointer stay dim gray but visible. The major marks do not light their neighbours.
+- The center percentage is plain light-weight white text. The accent light on the knob face is removed.
+- The progress arc is a thin accent line on a hairline track.
+- The dark background, panes and hairline borders from pre.1 are unchanged, as is all behavior.
+
 ## 1.1.0 (versionCode 28, pre-release 1.1.0-pre.1)
 
 - New look: the app is always dark, with a flat near-black background, slightly lighter panes and hairline borders, modeled on the dark mode of the Windows 10 Calculator and Calendar apps. The settings card has small corners and a 1 dp border.
